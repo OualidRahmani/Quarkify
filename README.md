@@ -22,7 +22,7 @@ Quarkify follows a proprietary hierarchy to keep your browsing organized and res
 ### Installation
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/OualidRahmani/Quarkify.git](https://github.com/OualidRahmani/Quarkify.git)
+    git clone https://github.com/OualidRahmani/Quarkify.git
     cd Quarkify
     ```
 2.  **Install dependencies:**
