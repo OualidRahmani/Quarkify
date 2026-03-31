@@ -1,25 +1,51 @@
-# ⚛️ Quarkify
+# ⚛️ Quarkify 
 
-**Quarkify** is a high-performance, minimalist web engine built on Electron. It uses an "Atomic" architecture to organize your digital life into isolated workspaces (Molecules) and tabs (Quarks).
-
-## Features
-
-* **Molecular Workspaces:** Isolate your browsing contexts (Work, Personal, Gaming) with independent tab groups and dynamic color themes.
-* **Smart Omnibox:** Integrated search logic that distinguishes between URLs and search queries automatically.
-* **Memory Managed:** Quarks are destroyed and created dynamically to ensure low RAM overhead.
-* **Live Styles:** Real-time CSS injection for instant UI customization during development.
-* **Linux Native:** Ships as a standalone, portable AppImage.
+Quarkify is a minimalist, developer-centric web engine built on Electron. It reimagines browser architecture using a hierarchical "Atomic" structure to organize your digital life, focusing on context isolation and performance.
 
 ---
 
-## Installation & Development
+## The Architecture
+Quarkify follows a proprietary hierarchy to keep your browsing organized and resource-efficient:
+
+* **Molecules (Workspaces):** High-level isolated environments (e.g., Work, Personal, Research) with unique theme colors and independent state management.
+* **Atoms (Groups):** Logical clusters of related tasks or projects within a single Molecule.
+* **Quarks (Tabs):** The fundamental building blocks—individual Chromium web instances with dynamic title-tracking.
+
+---
+
+## Getting Started
 
 ### Prerequisites
-* [Node.js](https://nodejs.org/) (v18 or higher recommended)
-* npm
+* **Node.js** (v18.x or higher)
+* **npm** (v9.x or higher)
 
-### Setup
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/OualidRahmani/Quarkify.git](https://github.com/OualidRahmani/Quarkify.git)
-   cd Quarkify
+### Installation
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/OualidRahmani/Quarkify.git](https://github.com/OualidRahmani/Quarkify.git)
+    cd Quarkify
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+---
+
+## Usage
+
+### Development Mode
+    Runs the browser with live-reloading for styles enabled and Chrome DevTools open by default:
+
+```bash
+npm start
+```
+
+### Building for Production
+    To package the app into a standalone Linux AppImage (portable executable):
+
+```bash
+npm run build
+```
+
+The resulting binary will be generated in the dist/ directory.
