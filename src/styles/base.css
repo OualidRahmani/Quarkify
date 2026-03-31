@@ -1,0 +1,203 @@
+:root {
+  --bg-dark: #121212;
+  --bg-panel: #1e1e1e;
+  --text-main: #ffffff;
+  --text-muted: #888888;
+
+  /* Default (Work) Theme */
+  --accent: #3a86ff;
+}
+
+/* Personal Theme Override */
+body[data-theme="personal"] {
+  --accent: #ff006e; /* A vibrant pink/red for personal stuff */
+  --bg-dark: #161014; /* A slightly warmer dark background */
+}
+
+/* Gaming/Third Theme Override (for later!) */
+body[data-theme="gaming"] {
+  --accent: #00f5d4;
+}
+
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  transition: background 0.3s ease;
+}
+
+#browser-shell {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+/* Navigation Controls */
+#nav-controls {
+  display: flex;
+  gap: 5px;
+  margin-right: 15px;
+  -webkit-app-region: no-drag; /* Allows us to click the buttons */
+}
+.nav-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+}
+.nav-btn:hover {
+  background: #2a2a2a;
+  color: var(--text-main);
+}
+
+/* Sidebar & Molecules */
+#sidebar {
+  width: 260px;
+  background: var(--bg-panel);
+  display: flex;
+  border-right: 1px solid #333;
+}
+#molecule-dock {
+  width: 50px;
+  background: #161616;
+  border-right: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 15px;
+  gap: 10px;
+}
+.molecule {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.molecule:hover {
+  background: #3a3a3a;
+}
+.molecule.active {
+  background: var(--accent);
+  color: white;
+}
+.molecule-add {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px dashed #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: 0.2s;
+}
+.molecule-add:hover {
+  border-color: var(--text-main);
+  color: var(--text-main);
+}
+
+/* Atoms & Quarks */
+#atom-list {
+  flex-grow: 1;
+  padding: 15px;
+}
+.atom-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  display: block;
+}
+.quark {
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.1s;
+}
+.quark:hover {
+  background: #2a2a2a;
+}
+.quark.active {
+  background: #2a2a2a;
+  border-left: 3px solid var(--accent);
+}
+
+/* The New Quark Button */
+.add-btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 10px;
+  background: transparent;
+  border: 1px dashed #555;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+  font-size: 13px;
+}
+.add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Main Content & URL Bar */
+#content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+}
+#top-bar {
+  height: 50px;
+  background: var(--bg-dark);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  -webkit-app-region: drag;
+} /* Allows dragging the window */
+#url-input {
+  width: 100%;
+  max-width: 600px;
+  background: var(--bg-panel);
+  border: 1px solid #333;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  outline: none;
+  -webkit-app-region: no-drag;
+}
+#url-input:focus {
+  border-color: var(--accent);
+}
+
+#webview-container {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-dark);
+  color: var(--text-muted);
+}

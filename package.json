@@ -1,0 +1,16 @@
+{
+  "name": "atom-browser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron src/main/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "chokidar": "^5.0.0",
+    "electron": "^41.1.0"
+  }
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="../styles/base.css">
+    <link id="custom-css" rel="stylesheet" href="../styles/user.css">
+</head>
+<body>
+    <div id="browser-shell">
+        <aside id="sidebar">
+            <div id="molecule-dock">
+                <div class="molecule active" data-molecule="work" title="Work">W</div>
+                <div class="molecule" data-molecule="personal" title="Personal">P</div>
+                
+                <div class="molecule-add" id="new-molecule-btn" title="Create New Molecule">+</div>
+            </div>
+            <div id="atom-list">
+                <div class="atom-group">
+                    <span class="atom-title" id="current-molecule-title">Work Space</span>
+                    
+                    <div id="quark-container">
+                        <div class="quark active" data-id="quark-1" data-url="https://wikipedia.org" data-molecule="work">Wikipedia</div>
+                        <div class="quark" data-id="quark-2" data-url="https://github.com" data-molecule="work">GitHub</div>
+                    </div>
+                    
+                    <button id="new-quark-btn" class="add-btn">+ New Quark</button>
+                </div>
+            </div>
+        </aside>
+
+        <main id="content">
+            <header id="top-bar">
+                <div id="nav-controls">
+                    <button id="btn-back" class="nav-btn" title="Go Back">←</button>
+                    <button id="btn-forward" class="nav-btn" title="Go Forward">→</button>
+                    <button id="btn-refresh" class="nav-btn" title="Refresh">↻</button>
+                </div>
+                
+                <input type="text" id="url-input" placeholder="Search or enter address..." />
+            </header>
+            <div id="webview-container">
+                <div class="empty-state">Ready to browse.</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Listen for the signal from main.js to refresh the CSS
+        ipcRenderer.on('reload-styles', () => {
+            const cssLink = document.getElementById('custom-css');
+            // Adding a timestamp forces the browser to ignore the cache and reload the file
+            cssLink.href = '../styles/user.css?v=' + new Date().getTime(); 
+        });
+    </script>
+    <script src="./ui.js"></script>
+</body>
+</html>
