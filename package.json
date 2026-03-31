@@ -1,16 +1,25 @@
 {
-  "name": "atom-browser",
+  "name": "quarkify",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A deeply customizable, minimalist web engine.",
+  "main": "src/main/main.js",
   "scripts": {
-    "start": "electron src/main/main.js"
+    "start": "electron src/main/main.js",
+    "build": "electron-builder"
   },
-  "keywords": [],
-  "author": "",
+  "author": "Oualid Rahmani",
   "license": "ISC",
   "devDependencies": {
-    "chokidar": "^5.0.0",
-    "electron": "^41.1.0"
+    "chokidar": "^3.6.0",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.oualid.quarkify",
+    "productName": "Quarkify",
+    "linux": {
+      "target": "AppImage",
+      "category": "Network"
+    }
   }
 }
