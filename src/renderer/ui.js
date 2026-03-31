@@ -1,4 +1,8 @@
-// --- 1. GRAB UI ELEMENTS ---
+const { ipcRenderer } = require('electron');
+
+// =============================================================================
+// 1. UI ELEMENTS
+// =============================================================================
 const urlInput = document.getElementById('url-input');
 const webviewContainer = document.getElementById('webview-container');
 const quarkContainer = document.getElementById('quark-container');
@@ -8,28 +12,38 @@ const btnForward = document.getElementById('btn-forward');
 const btnRefresh = document.getElementById('btn-refresh');
 const moleculeDock = document.getElementById('molecule-dock');
 const newMoleculeBtn = document.getElementById('new-molecule-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const moleculeTitle = document.getElementById('current-molecule-title');
 
-// --- 1.5. BROWSER CONFIGURATION ---
-// Change these easily in the future to switch to Google, Bing, etc.
+// =============================================================================
+// 2. CONFIGURATION
+// =============================================================================
 const DEFAULT_HOME_URL = 'https://duckduckgo.com';
 const SEARCH_ENGINE_QUERY_URL = 'https://duckduckgo.com/?q=';
-// Example for Google: 'https://www.google.com/search?q='
+const SETTINGS_QUARK_ID = 'quark-settings';
+const SYSTEM_MOLECULE = '__system__';
 
-// --- 2. THE STATE MANAGER ---
+// =============================================================================
+// 3. STATE
+// =============================================================================
 const activeWebviews = {};
 let currentQuarkId = null;
+let currentMolecule = 'work';
 let quarkCounter = 2;
-let moleculeCounter = 2; // We start with 2 hardcoded ones
+let moleculeCounter = 2;
+let isRestoring = true;
+let lawOfConservation = true;
 
-let currentMolecule = 'work'; // We start in the 'work' workspace
 const moleculeHistory = {
-    'work': 'quark-1', // Remembers that 'quark-1' is the active tab here
-    'personal': null   // Personal starts empty
+    'work': 'quark-1',
+    'personal': null,
 };
 
-// --- 3. CORE FUNCTIONS ---
+// =============================================================================
+// 4. HELPERS
+// =============================================================================
 function getRandomColor() {
-    const letters = '89ABCDEF'; // Keep them bright so they show up in dark mode
+    const letters = '89ABCDEF';
     let color = '#';
     for (let i = 0; i < 6; i++) {
         color += letters[Math.floor(Math.random() * letters.length)];
@@ -37,52 +51,67 @@ function getRandomColor() {
     return color;
 }
 
-function createWebview(id, url) {
-    const view = document.createElement('webview');
-    view.src = url;
-    view.style.width = '100%';
-    view.style.height = '100%';
-    view.style.border = 'none';
-    view.style.display = 'none';
+function resolveURL(input) {
+    input = input.trim();
+    if (input.includes(' ') || (!input.includes('.') && !input.startsWith('localhost'))) {
+        return SEARCH_ENGINE_QUERY_URL + encodeURIComponent(input);
+    }
+    if (!input.startsWith('http://') && !input.startsWith('https://')) {
+        return 'https://' + input;
+    }
+    return input;
+}
 
-    view.addEventListener('did-navigate', (e) => {
-        if (currentQuarkId === id) {
-            urlInput.value = e.url;
-            // Bonus: We'll eventually use this to update the tab title too!
+function safeGetURL(view, fallback) {
+    try { return view.getURL() || fallback; }
+    catch { return fallback; }
+}
+
+// =============================================================================
+// 5. WEBVIEW & QUARK MANAGEMENT
+// =============================================================================
+function createWebview(id, url, isLocal = false) {
+    const view = document.createElement('webview');
+
+    if (!isLocal) {
+        // Find the Molecule this Quark belongs to
+        const quarkBtn = document.querySelector(`.quark[data-id="${id}"]`);
+        const molId = quarkBtn ? quarkBtn.getAttribute('data-molecule') : currentMolecule;
+        const molBtn = document.querySelector(`.molecule[data-molecule="${molId}"]`);
+        
+        // Grab the partitionID from the Molecule
+        const pID = molBtn ? molBtn.getAttribute('data-partition') : 'default';
+        
+        // 'persist:' prefix ensures cookies stay after restart
+        view.setAttribute('partition', `persist:${pID}`);
+    } 
+    if (isLocal) {
+        view.setAttribute('webpreferences', 'nodeIntegration=yes, contextIsolation=no');
+    }
+
+    view.src = url;
+
+    Object.assign(view.style, { width: '100%', height: '100%', border: 'none', display: 'none' });
+
+    // Push current lawOfConservation state into the settings webview on load
+    view.addEventListener('dom-ready', () => {
+        if (id === SETTINGS_QUARK_ID) {
+            view.send('init-settings', { lawOfConservation });
         }
     });
 
+    view.addEventListener('did-navigate', (e) => {
+        if (currentQuarkId === id) urlInput.value = e.url;
+        preserveState();
+    });
+
     view.addEventListener('page-title-updated', (e) => {
-        const sidebarButton = document.querySelector(`.quark[data-id="${id}"]`);
-        if (sidebarButton) {
-            // e.title is the actual title of the webpage (e.g., "YouTube")
-            sidebarButton.innerText = e.title;
-        }
+        const btn = document.querySelector(`.quark[data-id="${id}"]`);
+        if (btn) btn.innerText = e.title;
     });
 
     webviewContainer.appendChild(view);
     activeWebviews[id] = view;
-}
-
-function switchQuark(id) {
-    if (currentQuarkId && activeWebviews[currentQuarkId]) {
-        activeWebviews[currentQuarkId].style.display = 'none';
-    }
-
-    if (activeWebviews[id]) {
-        activeWebviews[id].style.display = 'flex';
-        currentQuarkId = id;
-        moleculeHistory[currentMolecule] = id;
-        try {
-            urlInput.value = activeWebviews[id].getURL();
-        } catch (error) {
-            urlInput.value = activeWebviews[id].src;
-        }
-    }
-
-
-    document.querySelectorAll('.quark').forEach(btn => btn.classList.remove('active'));
-    document.querySelector(`.quark[data-id="${id}"]`).classList.add('active');
 }
 
 function createQuark(id, title, molecule) {
@@ -92,256 +121,320 @@ function createQuark(id, title, molecule) {
     btn.setAttribute('data-molecule', molecule);
     btn.innerText = title;
 
-    // Attach the click listener to the newly born button
-    btn.addEventListener('click', () => {
-        switchQuark(id);
-    });
+    btn.addEventListener('click', () => switchQuark(id));
+    btn.addEventListener('auxclick', (e) => { if (e.button === 1) closeQuark(id); });
 
-    btn.addEventListener('auxclick', (e) => {
-        if (e.button === 1) { // button 1 is the Middle Mouse Wheel
-            closeQuark(id);
-        }
-    });
-
-    // Inject it into the HTML container
     quarkContainer.appendChild(btn);
+    preserveState();
+}
+
+function switchQuark(id) {
+    // Hide current
+    if (currentQuarkId && activeWebviews[currentQuarkId]) {
+        activeWebviews[currentQuarkId].style.display = 'none';
+    }
+
+    // Show new
+    if (activeWebviews[id]) {
+        activeWebviews[id].style.display = 'flex';
+        currentQuarkId = id;
+        if (id !== SETTINGS_QUARK_ID) moleculeHistory[currentMolecule] = id;
+        urlInput.value = safeGetURL(activeWebviews[id], activeWebviews[id].src);
+    }
+
+    // Update sidebar highlight
+    document.querySelectorAll('.quark').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.querySelector(`.quark[data-id="${id}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    preserveState();
 }
 
 function closeQuark(id) {
-    const viewToClose = activeWebviews[id];
-    const btnToClose = document.querySelector(`.quark[data-id="${id}"]`);
+    const view = activeWebviews[id];
+    const btn = document.querySelector(`.quark[data-id="${id}"]`);
+    if (!view || !btn) return;
 
-    if (!viewToClose || !btnToClose) return; // Safety check
-
-    // 1. Remove them from the HTML
-    webviewContainer.removeChild(viewToClose);
-    btnToClose.remove();
-
-    // 2. Delete from our memory dictionary
+    view.remove();
+    btn.remove();
     delete activeWebviews[id];
 
-    // 3. If we just closed the tab we were looking at, we need to switch to another one
     if (currentQuarkId === id) {
-        const remainingTabs = document.querySelectorAll('.quark');
-        if (remainingTabs.length > 0) {
-            // Switch to the last available tab in the list
-            const nextId = remainingTabs[remainingTabs.length - 1].getAttribute('data-id');
-            switchQuark(nextId);
+        const remaining = document.querySelectorAll('.quark');
+        if (remaining.length > 0) {
+            switchQuark(remaining[remaining.length - 1].getAttribute('data-id'));
         } else {
-            // No tabs left! 
             currentQuarkId = null;
             urlInput.value = '';
         }
     }
+
+    preserveState();
 }
 
-// --- 4. INITIALIZE THE BROWSER ---
-webviewContainer.innerHTML = '';
+// =============================================================================
+// 6. MOLECULE MANAGEMENT
+// =============================================================================
+function createMolecule(id, letter, partitionID = null) {
+    const btn = document.createElement('div');
+    btn.className = 'molecule';
+    btn.setAttribute('data-molecule', id);
+    
+    // Default partition to the molecule ID if none provided
+    const pID = partitionID || id;
+    btn.setAttribute('data-partition', pID);
+    
+    btn.title = id;
+    btn.innerText = letter.toUpperCase();
 
-// Load the initial hardcoded tabs
-document.querySelectorAll('.quark').forEach(button => {
-    const id = button.getAttribute('data-id');
-    const url = button.getAttribute('data-url');
-    createWebview(id, url);
-    button.addEventListener('click', () => switchQuark(id));
-    button.addEventListener('auxclick', (e) => {
-        if (e.button === 1) {
-            closeQuark(id);
-        }
-    });
-});
-
-switchQuark('quark-1');
-
-// --- 5. THE SPAWNER LOGIC (NEW) ---
-newQuarkBtn.addEventListener('click', () => {
-    quarkCounter++;
-    const newId = `quark-${quarkCounter}`;
-
-    createQuark(newId, 'New Tab', currentMolecule);
-
-    createWebview(newId, DEFAULT_HOME_URL);
-
-    switchQuark(newId);
-});
-
-// --- 6. URL BAR LOGIC ---
-urlInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && currentQuarkId) {
-        let input = urlInput.value.trim();
-        let finalUrl = '';
-
-        // 1. Is it a search query? (Has spaces, or lacks a dot)
-        // Note: We also check for 'localhost' so developer links still work!
-        if (input.includes(' ') || (!input.includes('.') && !input.startsWith('localhost'))) {
-            // It's a search. Format it for DuckDuckGo.
-            finalUrl = SEARCH_ENGINE_QUERY_URL + encodeURIComponent(input);
-            if (!input.startsWith('http://') && !input.startsWith('https://')) {
-                finalUrl = 'https://' + input;
-            } else {
-                finalUrl = input;
-            }
-        }
-
-        // Load the smart URL and remove focus from the input bar
-        activeWebviews[currentQuarkId].loadURL(finalUrl);
-        urlInput.blur();
+    // Preserve the custom color if it's already in the CSS variables
+    if (!document.documentElement.style.getPropertyValue(`--theme-${id}`)) {
+        document.documentElement.style.setProperty(`--theme-${id}`, getRandomColor());
     }
-});
 
-// --- 7. NAVIGATION CONTROLS ---
-btnBack.addEventListener('click', () => {
-    // Safety check: Make sure a tab is open, AND that it has history to go back to
-    if (currentQuarkId && activeWebviews[currentQuarkId].canGoBack()) {
-        activeWebviews[currentQuarkId].goBack();
-    }
-});
+    btn.addEventListener('click', () => switchMolecule(id));
+    btn.addEventListener('auxclick', (e) => { if (e.button === 1) destroyMolecule(id); });
 
-btnForward.addEventListener('click', () => {
-    if (currentQuarkId && activeWebviews[currentQuarkId].canGoForward()) {
-        activeWebviews[currentQuarkId].goForward();
-    }
-});
-
-btnRefresh.addEventListener('click', () => {
-    if (currentQuarkId) {
-        activeWebviews[currentQuarkId].reload();
-    }
-});
-
-// --- 8. THE MOLECULE ROUTER ---
-const moleculeButtons = document.querySelectorAll('.molecule');
-const moleculeTitle = document.getElementById('current-molecule-title');
-
-function createMolecule(id, letter) {
-    const newBtn = document.createElement('div');
-    newBtn.className = 'molecule';
-    newBtn.setAttribute('data-molecule', id);
-    newBtn.title = id;
-    newBtn.innerText = letter.toUpperCase();
-
-    // 1. Generate a custom theme variable just for this molecule
-    const randomColor = getRandomColor();
-    document.documentElement.style.setProperty(`--theme-${id}`, randomColor);
-
-    // 2. Attach Click Listener (Switch to it)
-    newBtn.addEventListener('click', () => {
-        switchMolecule(id);
-    });
-
-    // 3. Attach Middle-Click Listener (Destroy it)
-    newBtn.addEventListener('auxclick', (e) => {
-        if (e.button === 1) {
-            destroyMolecule(id);
-        }
-    });
-
-    // Inject it into the dock right ABOVE the + button
-    moleculeDock.insertBefore(newBtn, newMoleculeBtn);
+    newMoleculeBtn.before(btn);
+    preserveState();
 }
 
 function destroyMolecule(id) {
-    // Safety check: Don't let them delete the last molecule!
     const allMolecules = document.querySelectorAll('.molecule');
     if (allMolecules.length <= 1) return;
 
-    // 1. Destroy all Quarks inside this Molecule to free up RAM
-    const quarksToKill = document.querySelectorAll(`.quark[data-molecule="${id}"]`);
-    quarksToKill.forEach(q => {
-        const quarkId = q.getAttribute('data-id');
-        closeQuark(quarkId);
+    document.querySelectorAll(`.quark[data-molecule="${id}"]`).forEach(q => {
+        closeQuark(q.getAttribute('data-id'));
     });
 
-    // 2. Remove the UI Button
-    const btnToRemove = document.querySelector(`.molecule[data-molecule="${id}"]`);
-    if (btnToRemove) btnToRemove.remove();
-
-    // 3. Clean up our memory history
+    document.querySelector(`.molecule[data-molecule="${id}"]`)?.remove();
     delete moleculeHistory[id];
 
-    // 4. If we just deleted the molecule we were currently looking at, switch to a safe one
     if (currentMolecule === id) {
-        const remainingMolecules = document.querySelectorAll('.molecule');
-        const fallbackMoleculeId = remainingMolecules[0].getAttribute('data-molecule');
-        switchMolecule(fallbackMoleculeId);
+        const fallback = document.querySelectorAll('.molecule')[0].getAttribute('data-molecule');
+        switchMolecule(fallback);
     }
+
+    preserveState();
 }
 
 function switchMolecule(targetMolecule) {
+    const targetEl = document.querySelector(`.molecule[data-molecule="${targetMolecule}"]`);
+    if (!targetMolecule || !targetEl) return;
+
     currentMolecule = targetMolecule;
 
-    // 1. Update UI Theme & Title
+    // Update molecule dock highlight
     document.querySelectorAll('.molecule').forEach(m => m.classList.remove('active'));
-    document.querySelector(`.molecule[data-molecule="${targetMolecule}"]`).classList.add('active');
+    targetEl.classList.add('active');
     document.body.setAttribute('data-theme', targetMolecule);
 
+    // Apply accent color
     const customColor = document.documentElement.style.getPropertyValue(`--theme-${targetMolecule}`);
-    if (customColor) {
-        document.documentElement.style.setProperty('--accent', customColor);
-    } else {
-        // Fallbacks for our hardcoded Work/Personal
-        if (targetMolecule === 'work') document.documentElement.style.setProperty('--accent', '#3a86ff');
-        if (targetMolecule === 'personal') document.documentElement.style.setProperty('--accent', '#ff006e');
-    }
+    const defaultColors = { work: '#3a86ff', personal: '#ff006e' };
+    document.documentElement.style.setProperty('--accent', customColor || defaultColors[targetMolecule] || '#3a86ff');
 
-    moleculeTitle.innerText = targetMolecule + " molecule";
+    moleculeTitle.innerText = targetMolecule + ' molecule';
 
-    // 2. Filter the Sidebar Tabs (Hide others, show ours)
+    // Show/hide quarks — system quarks are always visible
     let hasQuarks = false;
     document.querySelectorAll('.quark').forEach(btn => {
-        if (btn.getAttribute('data-molecule') === targetMolecule) {
-            btn.style.display = 'block'; // Show it!
-            hasQuarks = true;
-        } else {
-            btn.style.display = 'none'; // Hide it!
-        }
+        const mol = btn.getAttribute('data-molecule');
+        if (mol === SYSTEM_MOLECULE) return;
+        const visible = mol === targetMolecule;
+        btn.style.display = visible ? 'block' : 'none';
+        if (visible) hasQuarks = true;
     });
 
-    // 3. Restore the Main View (Webview)
-    const lastActiveQuarkId = moleculeHistory[targetMolecule];
-
-    if (lastActiveQuarkId && activeWebviews[lastActiveQuarkId]) {
-        // If we have history, load the exact tab we were looking at last
-        switchQuark(lastActiveQuarkId);
+    // Switch to the last active quark in this molecule, or the first available
+    const lastId = moleculeHistory[targetMolecule];
+    if (lastId && activeWebviews[lastId]) {
+        switchQuark(lastId);
     } else if (hasQuarks) {
-        // If no history, but tabs exist, just pick the first one we find
-        const firstAvailable = document.querySelector(`.quark[data-molecule="${targetMolecule}"]`);
-        switchQuark(firstAvailable.getAttribute('data-id'));
+        const first = document.querySelector(`.quark[data-molecule="${targetMolecule}"]`);
+        switchQuark(first.getAttribute('data-id'));
     } else {
-        // The Workspace is completely empty! 
+        // No quarks in this molecule — open a fresh one
         if (currentQuarkId && activeWebviews[currentQuarkId]) {
             activeWebviews[currentQuarkId].style.display = 'none';
         }
         currentQuarkId = null;
         urlInput.value = '';
-
-        // Automatically spawn a new tab for them so they aren't staring at a blank screen
-        document.getElementById('new-quark-btn').click();
+        newQuarkBtn.click();
     }
 }
 
-// Attach click listeners to the physical buttons
+// =============================================================================
+// 7. STATE PERSISTENCE
+// =============================================================================
+function preserveState() {
+    if (isRestoring) return;
+
+    const state = {
+        settings: { lawOfConservation },
+        currentMolecule,
+        moleculeHistory,
+        molecules: Array.from(document.querySelectorAll('.molecule:not(#settings-btn):not(#new-molecule-btn)')).map(m => ({
+            id: m.getAttribute('data-molecule'),
+            partitionID: m.getAttribute('data-partition'),
+            letter: m.innerText,
+            color: document.documentElement.style.getPropertyValue(`--theme-${m.getAttribute('data-molecule')}`),
+        })),
+        // When Law of Conservation is OFF, save empty quarks so nothing restores on next boot
+        quarks: lawOfConservation
+            ? Array.from(document.querySelectorAll(`.quark:not([data-id="${SETTINGS_QUARK_ID}"])`)).map(q => {
+                const qId = q.getAttribute('data-id');
+                const view = activeWebviews[qId];
+                return {
+                    id: qId,
+                    title: q.innerText,
+                    url: view ? safeGetURL(view, DEFAULT_HOME_URL) : DEFAULT_HOME_URL,
+                    molecule: q.getAttribute('data-molecule'),
+                };
+            })
+            : [],
+    };
+
+    ipcRenderer.send('save-state', state);
+}
+
+// =============================================================================
+// 8. BOOT — initialize hardcoded quarks from HTML, then wait for saved state
+// =============================================================================
+webviewContainer.innerHTML = '';
+
+document.querySelectorAll('.quark').forEach(btn => {
+    const id = btn.getAttribute('data-id');
+    const url = btn.getAttribute('data-url');
+    createWebview(id, url);
+    btn.addEventListener('click', () => switchQuark(id));
+    btn.addEventListener('auxclick', (e) => { if (e.button === 1) closeQuark(id); });
+});
+
+switchQuark('quark-1');
+
+// =============================================================================
+// 9. IPC — receive saved state from main process on boot
+// =============================================================================
+ipcRenderer.on('load-state', (event, savedState) => {
+    if (!savedState) {
+        isRestoring = false;
+        preserveState();
+        return;
+    }
+
+    if (savedState.settings) {
+        lawOfConservation = savedState.settings.lawOfConservation;
+    }
+
+    isRestoring = true;
+
+    // Clear the board
+    moleculeDock.querySelectorAll('.molecule:not(#settings-btn):not(#new-molecule-btn)').forEach(m => m.remove());
+    quarkContainer.innerHTML = '';
+    webviewContainer.innerHTML = '';
+
+    // Rebuild molecules
+    (savedState.molecules || []).forEach(m => {
+        if (!m?.id) return;
+        createMolecule(m.id, m.letter || 'M', m.partitionID);
+        if (m.color) document.documentElement.style.setProperty(`--theme-${m.id}`, m.color);
+        if (m.id.includes('-')) {
+            const num = parseInt(m.id.split('-')[1], 10);
+            if (!isNaN(num) && num > moleculeCounter) moleculeCounter = num;
+        }
+    });
+
+    // Rebuild quarks
+    (savedState.quarks || []).forEach(q => {
+        if (!q?.id) return;
+        let url = q.url || DEFAULT_HOME_URL;
+        const isLocal = url.startsWith('file://');
+        if (!url.startsWith('http') && !isLocal) url = DEFAULT_HOME_URL;
+
+        createQuark(q.id, q.title || 'New Tab', q.molecule || 'work');
+        createWebview(q.id, url, isLocal);
+
+        if (q.id.includes('-')) {
+            const num = parseInt(q.id.split('-')[1], 10);
+            if (!isNaN(num) && num > quarkCounter) quarkCounter = num;
+        }
+    });
+
+    // Restore molecule history
+    if (savedState.moleculeHistory) Object.assign(moleculeHistory, savedState.moleculeHistory);
+
+    // Switch to the last active molecule
+    const targetMol = savedState.currentMolecule || 'work';
+    switchMolecule(document.querySelector(`.molecule[data-molecule="${targetMol}"]`) ? targetMol : 'work');
+
+    isRestoring = false;
+});
+
+// Receive updated lawOfConservation from the settings quark via ipcMain
+ipcRenderer.on('toggle-conservation', (event, value) => {
+    lawOfConservation = value;
+    preserveState();
+});
+
+// =============================================================================
+// 10. EVENT LISTENERS
+// =============================================================================
+
+// URL bar
+urlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && currentQuarkId) {
+        activeWebviews[currentQuarkId].loadURL(resolveURL(urlInput.value));
+        urlInput.blur();
+    }
+});
+
+// Navigation controls
+btnBack.addEventListener('click', () => {
+    if (currentQuarkId && activeWebviews[currentQuarkId].canGoBack()) activeWebviews[currentQuarkId].goBack();
+});
+btnForward.addEventListener('click', () => {
+    if (currentQuarkId && activeWebviews[currentQuarkId].canGoForward()) activeWebviews[currentQuarkId].goForward();
+});
+btnRefresh.addEventListener('click', () => {
+    if (currentQuarkId) activeWebviews[currentQuarkId].reload();
+});
+
+// New quark
+newQuarkBtn.addEventListener('click', () => {
+    quarkCounter++;
+    const newId = `quark-${quarkCounter}`;
+    createQuark(newId, 'New Tab', currentMolecule);
+    createWebview(newId, DEFAULT_HOME_URL);
+    switchQuark(newId);
+});
+
+// New molecule
 newMoleculeBtn.addEventListener('click', () => {
     moleculeCounter++;
     const newId = `molecule-${moleculeCounter}`;
-
-    // Use 'M' as the default letter, or prompt the user later!
     createMolecule(newId, 'M');
-
-    // Switch to it immediately
     switchMolecule(newId);
 });
 
-// Attach listeners to the initial hardcoded buttons
-const initialMoleculeButtons = document.querySelectorAll('.molecule');
-initialMoleculeButtons.forEach(btn => {
-    const id = btn.getAttribute('data-molecule');
-    btn.addEventListener('click', () => switchMolecule(id));
+// Hardcoded molecule buttons from HTML
+document.querySelectorAll('.molecule').forEach(btn => {
+    if (btn.id === 'settings-btn') return;
+    btn.addEventListener('click', () => switchMolecule(btn.getAttribute('data-molecule')));
+    btn.addEventListener('auxclick', (e) => { if (e.button === 1) destroyMolecule(btn.getAttribute('data-molecule')); });
+});
 
-    // Allow deleting the starting ones too!
-    btn.addEventListener('auxclick', (e) => {
-        if (e.button === 1) {
-            destroyMolecule(id);
-        }
-    });
+// Settings quark
+settingsBtn.addEventListener('click', () => {
+    if (!document.querySelector(`.quark[data-id="${SETTINGS_QUARK_ID}"]`)) {
+        createQuark(SETTINGS_QUARK_ID, '⚙️ Settings', SYSTEM_MOLECULE);
+        createWebview(SETTINGS_QUARK_ID, `${__dirname}/settings.html`, true);
+    }
+    switchQuark(SETTINGS_QUARK_ID);
+});
+
+// Hot-reload user.css (Development only)
+ipcRenderer.on('reload-styles', () => {
+    const link = document.getElementById('custom-css');
+    if (link) link.href = '../styles/user.css?v=' + Date.now();
 });

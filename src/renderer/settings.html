@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Quarkify Settings</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px;
+            background: #121212;
+            color: #fff;
+            font-family: "Segoe UI", system-ui, sans-serif;
+            max-width: 600px;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            border-bottom: 1px solid #333;
+            padding-bottom: 12px;
+            margin-bottom: 24px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-bottom: 12px;
+        }
+
+        .setting-info h3 {
+            margin: 0 0 5px 0;
+            font-size: 1rem;
+        }
+
+        .setting-info p {
+            margin: 0;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        /* Toggle switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: #444;
+            border-radius: 34px;
+            transition: .4s;
+        }
+
+        .slider:before {
+            content: "";
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 4px;
+            bottom: 4px;
+            background: white;
+            border-radius: 50%;
+            transition: .4s;
+        }
+
+        input:checked+.slider {
+            background: #3a86ff;
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+
+<body>
+    <h1>⚙️ Quarkify Settings</h1>
+
+    <div class="setting-row">
+        <div class="setting-info">
+            <h3>The Law of Conservation</h3>
+            <p>Remember open Quarks and Workspaces when the browser closes.</p>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="conservation-toggle">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+        <div class="setting-info">
+            <h3>The Vault</h3>
+            <p>Manage your saved identifications and passwords.</p>
+        </div>
+
+        <div id="vault-list" style="width: 100%; margin-top: 10px;">
+        </div>
+
+        <div style="display: flex; gap: 10px; width: 100%;">
+            <input type="text" id="v-domain" placeholder="Domain (e.g. github.com)"
+                style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white;">
+            <input type="text" id="v-user" placeholder="User"
+                style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white;">
+            <input type="password" id="v-pass" placeholder="Password"
+                style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white;">
+            <button id="add-vault-btn"
+                style="padding: 8px 15px; background: #3a86ff; color: white; border: none; border-radius: 4px; cursor: pointer;">Save</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const toggle = document.getElementById('conservation-toggle');
+
+        // Request current settings from main process on load
+        ipcRenderer.send('request-settings');
+
+        ipcRenderer.on('init-settings', (event, state) => {
+            toggle.checked = state.lawOfConservation;
+        });
+
+        toggle.addEventListener('change', (e) => {
+            ipcRenderer.send('toggle-conservation', e.target.checked);
+        });
+
+        const addBtn = document.getElementById('add-vault-btn');
+        const vaultList = document.getElementById('vault-list');
+
+        // Function to refresh the list
+        async function refreshVault() {
+            const items = await ipcRenderer.invoke('vault-get-all');
+            vaultList.innerHTML = items.map(item => `
+        <div style="display: flex; justify-content: space-between; padding: 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;">
+            <span><strong>${item.domain}</strong> (${item.username})</span>
+            <span style="color: #888;">••••••••</span>
+        </div>
+    `).join('');
+        }
+
+        addBtn.addEventListener('click', () => {
+            const domain = document.getElementById('v-domain').value;
+            const username = document.getElementById('v-user').value;
+            const password = document.getElementById('v-pass').value;
+
+            if (domain && username && password) {
+                ipcRenderer.send('vault-save', { domain, username, password });
+                // Clear fields
+                document.getElementById('v-domain').value = '';
+                document.getElementById('v-user').value = '';
+                document.getElementById('v-pass').value = '';
+            }
+        });
+
+        ipcRenderer.on('vault-updated', () => refreshVault());
+        window.addEventListener('DOMContentLoaded', refreshVault);
+    </script>
+</body>
+
+</html>
