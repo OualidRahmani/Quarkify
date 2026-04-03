@@ -72,6 +72,13 @@ function createWindow() {
 
 // Persist state from ui.js
 ipcMain.on('save-state', (event, stateData) => {
+    const existingConfig = loadConfig() || {};
+    
+    // Protect the Vault! If it exists in the current file, copy it to the new save data
+    if (existingConfig.vault) {
+        stateData.vault = existingConfig.vault;
+    }
+
     saveConfig(stateData);
 });
 
@@ -87,25 +94,36 @@ ipcMain.on('toggle-conservation', (event, value) => {
     mainWindow.webContents.send('toggle-conservation', value);
 });
 
-ipcMain.on('vault-save', (event, { domain, username, password }) => {
+ipcMain.on('vault-save', (event, { id, domain, username, password }) => {
     const config = loadConfig() || {};
     if (!config.vault) config.vault = [];
 
-    // Check if encryption is available on this Linux distro (requires secret-service/kwallet)
     if (!safeStorage.isEncryptionAvailable()) {
-        console.error("Encryption not available on this system.");
+        console.error("[VAULT] Encryption not available on this system.");
         return;
     }
 
-    // Encrypt the password before saving
     const encryptedPassword = safeStorage.encryptString(password).toString('base64');
 
-    config.vault.push({
-        id: Date.now(),
-        domain,
-        username,
-        password: encryptedPassword // Stored as an encrypted base64 string
-    });
+    if (id) {
+        // Find and update existing credential
+        const index = config.vault.findIndex(item => item.id === id);
+        if (index !== -1) {
+            config.vault[index].domain = domain;
+            config.vault[index].username = username;
+            config.vault[index].password = encryptedPassword;
+            console.log(`[VAULT] Updated credential ID: ${id}`);
+        }
+    } else {
+        // Create new credential
+        config.vault.push({
+            id: Date.now(),
+            domain,
+            username,
+            password: encryptedPassword
+        });
+        console.log(`[VAULT] Saved new credential for: ${domain}`);
+    }
 
     saveConfig(config);
     event.reply('vault-updated', config.vault);
@@ -126,6 +144,82 @@ ipcMain.handle('vault-get-all', async () => {
             return { ...item, password: 'ERROR_DECRYPTING' };
         }
     });
+});
+
+// Send specific credentials to the Preload Script
+ipcMain.handle('vault-get-credentials', async (event, domain) => {
+    console.log(`\n[VAULT]Preload asked for: '${domain}'`);
+    
+    const config = loadConfig();
+    if (!config || !config.vault) {
+        console.log(`[VAULT]Vault is completely empty!`);
+        return [];
+    }
+
+    const cleanDomain = domain.replace('www.', '').trim();
+    
+    // 1. Check if the string matches
+    const matches = config.vault.filter(item => {
+        const savedDomain = item.domain.replace('www.', '').trim();
+        const isMatch = cleanDomain.includes(savedDomain) || savedDomain.includes(cleanDomain);
+        if (isMatch) console.log(`[VAULT]Domain Match Found: '${savedDomain}'`);
+        return isMatch;
+    });
+
+    if (matches.length === 0) {
+        console.log(`[VAULT]No domains matched '${cleanDomain}'`);
+        return [];
+    }
+
+    // 2. Try to decrypt
+    const validCredentials = [];
+    for (const item of matches) {
+        try {
+            const decrypted = safeStorage.decryptString(Buffer.from(item.password, 'base64'));
+            console.log(`[VAULT]Successfully decrypted password for: ${item.username}`);
+            validCredentials.push({ username: item.username, password: decrypted });
+        } catch (e) {
+            console.error(`[VAULT]DECRYPTION FAILED for ${item.username}! Error:`, e.message);
+        }
+    }
+
+    console.log(`[VAULT] Sending ${validCredentials.length} credentials to Preload.\n`);
+    return validCredentials;
+});
+
+ipcMain.on('propose-save-credential', (event, { domain, username, password }) => {
+    const config = loadConfig();
+    const vault = config?.vault || [];
+
+    const cleanDomain = domain.replace('www.', '').trim();
+
+    // Check if we already have this exact username for this domain
+    const alreadySaved = vault.some(item => {
+        const savedDomain = item.domain.replace('www.', '').trim();
+        const domainMatches = cleanDomain.includes(savedDomain) || savedDomain.includes(cleanDomain);
+        return domainMatches && item.username === username;
+    });
+
+    if (!alreadySaved) {
+        // Tell the UI to show the floating prompt
+        mainWindow.webContents.send('show-save-password-prompt', { domain, username, password });
+    }
+});
+
+// Delete a specific credential from the Vault
+ipcMain.on('vault-delete', (event, idToDelete) => {
+    const config = loadConfig();
+    if (!config || !config.vault) return;
+
+    // Filter out the credential that matches the ID we want to delete
+    config.vault = config.vault.filter(item => item.id !== idToDelete);
+
+    saveConfig(config); // Save the newly cleaned array to disk
+    
+    console.log(`[VAULT]Deleted credential ID: ${idToDelete}`);
+    
+    // Tell the Settings UI to refresh its list!
+    event.reply('vault-updated', config.vault); 
 });
 
 // =============================================================================

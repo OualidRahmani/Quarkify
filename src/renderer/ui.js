@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const path = require('node:path');
 
 // =============================================================================
 // 1. UI ELEMENTS
@@ -12,8 +13,17 @@ const btnForward = document.getElementById('btn-forward');
 const btnRefresh = document.getElementById('btn-refresh');
 const moleculeDock = document.getElementById('molecule-dock');
 const newMoleculeBtn = document.getElementById('new-molecule-btn');
-const settingsBtn = document.getElementById('settings-btn');
 const moleculeTitle = document.getElementById('current-molecule-title');
+const molModal = document.getElementById('new-molecule-modal');
+const molNameInput = document.getElementById('mol-name-input');
+const molThemeInput = document.getElementById('mol-theme-input');
+const molCreateBtn = document.getElementById('mol-create-btn');
+const molCancelBtn = document.getElementById('mol-cancel-btn');
+const settingsBtn = document.getElementById('settings-btn');
+const passwordPrompt = document.getElementById('password-prompt');
+const promptDomain = document.getElementById('prompt-domain');
+const promptSaveBtn = document.getElementById('prompt-save-btn');
+const promptCloseBtn = document.getElementById('prompt-close-btn');
 
 // =============================================================================
 // 2. CONFIGURATION
@@ -33,6 +43,7 @@ let quarkCounter = 2;
 let moleculeCounter = 2;
 let isRestoring = true;
 let lawOfConservation = true;
+let pendingCredential = null;
 
 const moleculeHistory = {
     'work': 'quark-1',
@@ -78,13 +89,16 @@ function createWebview(id, url, isLocal = false) {
         const quarkBtn = document.querySelector(`.quark[data-id="${id}"]`);
         const molId = quarkBtn ? quarkBtn.getAttribute('data-molecule') : currentMolecule;
         const molBtn = document.querySelector(`.molecule[data-molecule="${molId}"]`);
-        
-        // Grab the partitionID from the Molecule
         const pID = molBtn ? molBtn.getAttribute('data-partition') : 'default';
-        
-        // 'persist:' prefix ensures cookies stay after restart
+
+        // 1. Set the partition
         view.setAttribute('partition', `persist:${pID}`);
-    } 
+
+        // 2. ATTACH THE PRELOAD SCRIPT
+        const preloadPath = `file://${path.join(__dirname, 'preload.js')}`;
+        view.setAttribute('preload', preloadPath);
+    }
+
     if (isLocal) {
         view.setAttribute('webpreferences', 'nodeIntegration=yes, contextIsolation=no');
     }
@@ -97,6 +111,8 @@ function createWebview(id, url, isLocal = false) {
     view.addEventListener('dom-ready', () => {
         if (id === SETTINGS_QUARK_ID) {
             view.send('init-settings', { lawOfConservation });
+        } else if (!isLocal) {
+            view.openDevTools();
         }
     });
 
@@ -175,20 +191,25 @@ function closeQuark(id) {
 // =============================================================================
 // 6. MOLECULE MANAGEMENT
 // =============================================================================
-function createMolecule(id, letter, partitionID = null) {
+function createMolecule(id, name, themeType = 'random', partitionID = null) {
     const btn = document.createElement('div');
     btn.className = 'molecule';
     btn.setAttribute('data-molecule', id);
-    
-    // Default partition to the molecule ID if none provided
+
     const pID = partitionID || id;
     btn.setAttribute('data-partition', pID);
-    
-    btn.title = id;
-    btn.innerText = letter.toUpperCase();
 
-    // Preserve the custom color if it's already in the CSS variables
-    if (!document.documentElement.style.getPropertyValue(`--theme-${id}`)) {
+    btn.title = name; // This creates the native hover tooltip!
+    btn.innerText = name.charAt(0).toUpperCase(); // First letter of the name
+
+    // Apply specific themes if requested
+    if (themeType === 'work') {
+        document.documentElement.style.setProperty(`--theme-${id}`, '#3a86ff');
+    } else if (themeType === 'personal') {
+        document.documentElement.style.setProperty(`--theme-${id}`, '#ff006e');
+    } else if (themeType === 'gaming') {
+        document.documentElement.style.setProperty(`--theme-${id}`, '#00f5d4');
+    } else if (!document.documentElement.style.getPropertyValue(`--theme-${id}`)) {
         document.documentElement.style.setProperty(`--theme-${id}`, getRandomColor());
     }
 
@@ -198,7 +219,6 @@ function createMolecule(id, letter, partitionID = null) {
     newMoleculeBtn.before(btn);
     preserveState();
 }
-
 function destroyMolecule(id) {
     const allMolecules = document.querySelectorAll('.molecule');
     if (allMolecules.length <= 1) return;
@@ -277,7 +297,7 @@ function preserveState() {
         molecules: Array.from(document.querySelectorAll('.molecule:not(#settings-btn):not(#new-molecule-btn)')).map(m => ({
             id: m.getAttribute('data-molecule'),
             partitionID: m.getAttribute('data-partition'),
-            letter: m.innerText,
+            name: m.title, // Save the full name from the tooltip!
             color: document.documentElement.style.getPropertyValue(`--theme-${m.getAttribute('data-molecule')}`),
         })),
         // When Law of Conservation is OFF, save empty quarks so nothing restores on next boot
@@ -337,12 +357,9 @@ ipcRenderer.on('load-state', (event, savedState) => {
     // Rebuild molecules
     (savedState.molecules || []).forEach(m => {
         if (!m?.id) return;
-        createMolecule(m.id, m.letter || 'M', m.partitionID);
+        // Pass the saved name (fallback to 'M'), 'saved' for theme, and partition ID
+        createMolecule(m.id, m.name || 'M', 'saved', m.partitionID);
         if (m.color) document.documentElement.style.setProperty(`--theme-${m.id}`, m.color);
-        if (m.id.includes('-')) {
-            const num = parseInt(m.id.split('-')[1], 10);
-            if (!isNaN(num) && num > moleculeCounter) moleculeCounter = num;
-        }
     });
 
     // Rebuild quarks
@@ -411,10 +428,32 @@ newQuarkBtn.addEventListener('click', () => {
 
 // New molecule
 newMoleculeBtn.addEventListener('click', () => {
+    molNameInput.value = '';
+    molThemeInput.value = 'random';
+    molModal.style.display = 'block';
+    molNameInput.focus();
+});
+
+molCancelBtn.addEventListener('click', () => {
+    molModal.style.display = 'none';
+});
+
+molCreateBtn.addEventListener('click', () => {
+    const name = molNameInput.value.trim() || 'Workspace';
+    const theme = molThemeInput.value;
+    
     moleculeCounter++;
-    const newId = `molecule-${moleculeCounter}`;
-    createMolecule(newId, 'M');
+    const newId = `molecule-${Date.now()}`; // Unique ID using timestamp
+    
+    createMolecule(newId, name, theme);
     switchMolecule(newId);
+    
+    molModal.style.display = 'none';
+});
+
+// Allow hitting "Enter" in the input field to create it quickly
+molNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') molCreateBtn.click();
 });
 
 // Hardcoded molecule buttons from HTML
@@ -431,6 +470,25 @@ settingsBtn.addEventListener('click', () => {
         createWebview(SETTINGS_QUARK_ID, `${__dirname}/settings.html`, true);
     }
     switchQuark(SETTINGS_QUARK_ID);
+});
+
+ipcRenderer.on('show-save-password-prompt', (event, creds) => {
+    pendingCredential = creds;
+    promptDomain.innerText = creds.domain;
+    passwordPrompt.style.display = 'block';
+});
+
+promptSaveBtn.addEventListener('click', () => {
+    if (pendingCredential) {
+        ipcRenderer.send('vault-save', pendingCredential);
+    }
+    passwordPrompt.style.display = 'none';
+    pendingCredential = null;
+});
+
+promptCloseBtn.addEventListener('click', () => {
+    passwordPrompt.style.display = 'none';
+    pendingCredential = null;
 });
 
 // Hot-reload user.css (Development only)

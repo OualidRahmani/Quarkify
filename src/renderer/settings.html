@@ -106,7 +106,7 @@
         </label>
     </div>
 
-    <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+    <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 15px; ">
         <div class="setting-info">
             <h3>The Vault</h3>
             <p>Manage your saved identifications and passwords.</p>
@@ -115,7 +115,7 @@
         <div id="vault-list" style="width: 100%; margin-top: 10px;">
         </div>
 
-        <div style="display: flex; gap: 10px; width: 100%;">
+        <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
             <input type="text" id="v-domain" placeholder="Domain (e.g. github.com)"
                 style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white;">
             <input type="text" id="v-user" placeholder="User"
@@ -145,15 +145,52 @@
         const addBtn = document.getElementById('add-vault-btn');
         const vaultList = document.getElementById('vault-list');
 
-        // Function to refresh the list
+        let editingId = null;
+
         async function refreshVault() {
             const items = await ipcRenderer.invoke('vault-get-all');
+
             vaultList.innerHTML = items.map(item => `
-        <div style="display: flex; justify-content: space-between; padding: 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;">
-            <span><strong>${item.domain}</strong> (${item.username})</span>
-            <span style="color: #888;">••••••••</span>
-        </div>
-    `).join('');
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;">
+                    <span><strong>${item.domain}</strong> (${item.username})</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #888;">••••••••</span>
+                        <button class="edit-btn" data-id="${item.id}" data-domain="${item.domain}" data-username="${item.username}" data-password="${item.password}" style="background: #ffaa00; color: #000; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.75rem; transition: 0.2s;">
+                            Edit
+                        </button>
+                        <button class="delete-btn" data-id="${item.id}" style="background: #ff006e; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.75rem; transition: 0.2s;">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Wire up Delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idToDelete = parseInt(e.target.getAttribute('data-id'), 10);
+                    ipcRenderer.send('vault-delete', idToDelete);
+                });
+            });
+
+            // Wire up Edit buttons
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const target = e.target;
+                    editingId = parseInt(target.getAttribute('data-id'), 10);
+
+                    // Populate inputs
+                    document.getElementById('v-domain').value = target.getAttribute('data-domain');
+                    document.getElementById('v-user').value = target.getAttribute('data-username');
+                    document.getElementById('v-pass').value = target.getAttribute('data-password');
+
+                    // Change Save button styling to indicate update mode
+                    const saveBtn = document.getElementById('add-vault-btn');
+                    saveBtn.innerText = 'Update';
+                    saveBtn.style.background = '#ffaa00';
+                    saveBtn.style.color = '#000';
+                });
+            });
         }
 
         addBtn.addEventListener('click', () => {
@@ -162,11 +199,19 @@
             const password = document.getElementById('v-pass').value;
 
             if (domain && username && password) {
-                ipcRenderer.send('vault-save', { domain, username, password });
+                // Send editingId (will be null for new saves, or a number for updates)
+                ipcRenderer.send('vault-save', { id: editingId, domain, username, password });
+
                 // Clear fields
                 document.getElementById('v-domain').value = '';
                 document.getElementById('v-user').value = '';
                 document.getElementById('v-pass').value = '';
+
+                // Reset button state
+                editingId = null;
+                addBtn.innerText = 'Save';
+                addBtn.style.background = '#3a86ff';
+                addBtn.style.color = 'white';
             }
         });
 
