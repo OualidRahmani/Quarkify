@@ -47,12 +47,17 @@
             color: #aaa;
         }
 
+        .setting-info {
+            padding-right: 20px;
+        }
+
         /* Toggle switch */
         .switch {
             position: relative;
             display: inline-block;
             width: 50px;
             height: 26px;
+            flex-shrink: 0;
         }
 
         .switch input {
@@ -93,7 +98,7 @@
 </head>
 
 <body>
-    <h1>⚙️ Quarkify Settings</h1>
+    <h1>Quarkify Settings</h1>
 
     <div class="setting-row">
         <div class="setting-info">
@@ -102,6 +107,17 @@
         </div>
         <label class="switch">
             <input type="checkbox" id="conservation-toggle">
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <div class="setting-row">
+        <div class="setting-info">
+            <h3>Cryo-Sleep (RAM Saver)</h3>
+            <p>Freeze Quarks in inactive Workspaces to save memory. They will reload when you switch back.</p>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="cryo-toggle">
             <span class="slider"></span>
         </label>
     </div>
@@ -127,30 +143,69 @@
         </div>
     </div>
 
+    <div class="setting-row">
+        <div class="setting-info">
+            <h3>Quark Bar Position</h3>
+            <p>Where do you want your tabs?</p>
+        </div>
+        <select id="quark-pos-select"
+            style="background:#121212; color:white; border:1px solid #333; padding:5px; border-radius:4px;">
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+        </select>
+    </div>
+
+    <div class="setting-row">
+        <div class="setting-info">
+            <h3>Atom Bar Position</h3>
+            <p>Where do you want your workspace groups?</p>
+        </div>
+        <select id="atom-pos-select"
+            style="background:#121212; color:white; border:1px solid #333; padding:5px; border-radius:4px;">
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="top">Top</option>
+            <option value="bottom">Bottom</option>
+        </select>
+    </div>
+
     <script>
         const { ipcRenderer } = require('electron');
         const toggle = document.getElementById('conservation-toggle');
+        const cryoToggle = document.getElementById('cryo-toggle');
 
         // Request current settings from main process on load
         ipcRenderer.send('request-settings');
 
         ipcRenderer.on('init-settings', (event, state) => {
             toggle.checked = state.lawOfConservation;
+            if (state.cryoSleep !== undefined) cryoToggle.checked = state.cryoSleep;
+            
+            // Sync the dropdowns with the actual engine state!
+            if (state.quarkPos) document.getElementById('quark-pos-select').value = state.quarkPos;
+            if (state.atomPos) document.getElementById('atom-pos-select').value = state.atomPos;
         });
 
         toggle.addEventListener('change', (e) => {
             ipcRenderer.send('toggle-conservation', e.target.checked);
         });
 
+        cryoToggle.addEventListener('change', (e) => {
+            ipcRenderer.send('toggle-cryosleep', e.target.checked);
+        });
+
         const addBtn = document.getElementById('add-vault-btn');
         const vaultList = document.getElementById('vault-list');
 
         let editingId = null;
+        let vaultExpanded = false; // Tracks if the extra credentials are shown
 
         async function refreshVault() {
             const items = await ipcRenderer.invoke('vault-get-all');
 
-            vaultList.innerHTML = items.map(item => `
+            const generateHTML = (item) => `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;">
                     <span><strong>${item.domain}</strong> (${item.username})</span>
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -163,7 +218,36 @@
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `;
+
+            // If 2 or fewer, just show them. If more, split them up.
+            if (items.length <= 2) {
+                vaultList.innerHTML = items.map(generateHTML).join('');
+            } else {
+                const visibleHTML = items.slice(0, 2).map(generateHTML).join('');
+                const hiddenHTML = items.slice(2).map(generateHTML).join('');
+                
+                vaultList.innerHTML = `
+                    ${visibleHTML}
+                    <div id="vault-hidden-container" style="display: ${vaultExpanded ? 'block' : 'none'};">
+                        ${hiddenHTML}
+                    </div>
+                    <button id="vault-expand-btn" style="width: 100%; padding: 6px; background: transparent; border: 1px dashed #555; color: #888; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-top: 5px; transition: 0.2s;">
+                        ${vaultExpanded ? '↑ Show Less' : `+ ${items.length - 2} More Credentials`}
+                    </button>
+                `;
+
+                // Wire up the expand/collapse button
+                const expandBtn = document.getElementById('vault-expand-btn');
+                expandBtn.addEventListener('click', () => {
+                    vaultExpanded = !vaultExpanded;
+                    refreshVault();
+                });
+                
+                // Add a nice hover effect to the new button
+                expandBtn.addEventListener('mouseover', () => expandBtn.style.color = '#fff');
+                expandBtn.addEventListener('mouseout', () => expandBtn.style.color = '#888');
+            }
 
             // Wire up Delete buttons
             document.querySelectorAll('.delete-btn').forEach(btn => {
@@ -217,6 +301,19 @@
 
         ipcRenderer.on('vault-updated', () => refreshVault());
         window.addEventListener('DOMContentLoaded', refreshVault);
+
+        const qSelect = document.getElementById('quark-pos-select');
+        const aSelect = document.getElementById('atom-pos-select'); // New
+
+        function sendLayoutUpdate() {
+            ipcRenderer.send('update-layout', {
+                quarkPos: qSelect.value,
+                atomPos: aSelect.value
+            });
+        }
+
+        qSelect.addEventListener('change', sendLayoutUpdate);
+        aSelect.addEventListener('change', sendLayoutUpdate);
     </script>
 </body>
 

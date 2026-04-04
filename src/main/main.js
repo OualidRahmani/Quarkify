@@ -1,6 +1,6 @@
-const { app, BrowserWindow, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, Menu, nativeTheme } = require('electron');
 const path = require('node:path');
-const fs   = require('node:fs');
+const fs = require('node:fs');
 
 let chokidar;
 if (!app.isPackaged) chokidar = require('chokidar');
@@ -23,8 +23,51 @@ function saveConfig(data) {
 
 function loadConfig() {
     const p = getConfigPath();
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf-8'));
-    return null;
+    let data = null;
+
+    // 1. Try to read existing config
+    if (fs.existsSync(p)) {
+        try {
+            data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+        } catch (err) {
+            console.error('[CONFIG] Corrupted file. Generating a new one...');
+        }
+    }
+
+    // 2. If it's missing or completely empty, build the baseline
+    if (!data || Object.keys(data).length === 0) {
+        const defaultMolId = `molecule-${Date.now()}`;
+        const defaultAtomId = `atom-${Date.now()}`;
+
+        data = {
+            settings: {
+                lawOfConservation: false,
+                cryoSleep: false,
+                quarkPos: 'left',
+                atomPos: 'left'
+            },
+            currentMolecule: defaultMolId,
+            moleculeHistory: {},
+            atomHistory: {},
+            molecules: [{
+                id: defaultMolId,
+                name: 'Workspace',
+                color: '#3a86ff',
+                partitionID: 'default'
+            }],
+            atoms: [{
+                id: defaultAtomId,
+                name: 'General',
+                molecule: defaultMolId
+            }],
+            quarks: [],
+            vault: []
+        };
+        saveConfig(data);
+        console.log('[CONFIG] Generated fresh default state.');
+    }
+
+    return data;
 }
 
 // =============================================================================
@@ -73,7 +116,7 @@ function createWindow() {
 // Persist state from ui.js
 ipcMain.on('save-state', (event, stateData) => {
     const existingConfig = loadConfig() || {};
-    
+
     // Protect the Vault! If it exists in the current file, copy it to the new save data
     if (existingConfig.vault) {
         stateData.vault = existingConfig.vault;
@@ -82,16 +125,36 @@ ipcMain.on('save-state', (event, stateData) => {
     saveConfig(stateData);
 });
 
-// Settings quark requests current settings — reply directly to its webContents
-ipcMain.on('request-settings', (event) => {
-    const config = loadConfig();
-    const lawOfConservation = config?.settings?.lawOfConservation ?? true;
-    event.reply('init-settings', { lawOfConservation });
+// Get current memory usage of the main process
+ipcMain.handle('get-memory-usage', async () => {
+    // process.memoryUsage().rss represents the Resident Set Size (total memory allocated)
+    const memory = process.memoryUsage();
+    return Math.round(memory.rss / 1024 / 1024);
 });
 
-// Settings quark toggled — forward the new value to ui.js
+// Settings quark requests current settings
+ipcMain.on('request-settings', (event) => {
+    const config = loadConfig();
+    const lawOfConservation = config?.settings?.lawOfConservation ?? false;
+    const cryoSleep = config?.settings?.cryoSleep ?? false;
+    const quarkPos = config?.settings?.quarkPos ?? 'left';
+    const atomPos = config?.settings?.atomPos ?? 'left';
+    
+    event.reply('init-settings', { lawOfConservation, cryoSleep, quarkPos, atomPos });
+});
+
+// Settings quark toggled — forward the new values to ui.js
 ipcMain.on('toggle-conservation', (event, value) => {
     mainWindow.webContents.send('toggle-conservation', value);
+});
+
+ipcMain.on('toggle-cryosleep', (event, value) => {
+    mainWindow.webContents.send('toggle-cryosleep', value);
+});
+
+// Forward layout changes from settings to the main UI
+ipcMain.on('update-layout', (event, layoutConfig) => {
+    mainWindow.webContents.send('update-layout', layoutConfig);
 });
 
 ipcMain.on('vault-save', (event, { id, domain, username, password }) => {
@@ -149,7 +212,7 @@ ipcMain.handle('vault-get-all', async () => {
 // Send specific credentials to the Preload Script
 ipcMain.handle('vault-get-credentials', async (event, domain) => {
     console.log(`\n[VAULT]Preload asked for: '${domain}'`);
-    
+
     const config = loadConfig();
     if (!config || !config.vault) {
         console.log(`[VAULT]Vault is completely empty!`);
@@ -157,7 +220,7 @@ ipcMain.handle('vault-get-credentials', async (event, domain) => {
     }
 
     const cleanDomain = domain.replace('www.', '').trim();
-    
+
     // 1. Check if the string matches
     const matches = config.vault.filter(item => {
         const savedDomain = item.domain.replace('www.', '').trim();
@@ -215,16 +278,49 @@ ipcMain.on('vault-delete', (event, idToDelete) => {
     config.vault = config.vault.filter(item => item.id !== idToDelete);
 
     saveConfig(config); // Save the newly cleaned array to disk
-    
+
     console.log(`[VAULT]Deleted credential ID: ${idToDelete}`);
-    
+
     // Tell the Settings UI to refresh its list!
-    event.reply('vault-updated', config.vault); 
+    event.reply('vault-updated', config.vault);
 });
 
 // =============================================================================
 // LIFECYCLE
 // =============================================================================
+
+// GLOBAL CONTEXT MENU
+// This intercepts every new WebContents (including the main UI and all Webviews)
+let lastContextMenuParams = null;
+let lastWebContentsId = null;
+
+app.on('web-contents-created', (event, contents) => {
+    contents.on('context-menu', (event, params) => {
+        lastContextMenuParams = params;
+        lastWebContentsId = contents.id;
+
+        // Figure out if they clicked the browser UI or a web page
+        const isMainWindow = (mainWindow && contents === mainWindow.webContents);
+
+        // Tell the UI to render our custom CSS menu at these exact coordinates
+        if (mainWindow) {
+            mainWindow.webContents.send('show-custom-menu', {
+                x: params.x,
+                y: params.y,
+                isMainWindow
+            });
+        }
+    });
+});
+
+// The UI will send this back if the user clicks "Inspect Element"
+ipcMain.on('trigger-inspect', () => {
+    if (lastWebContentsId && lastContextMenuParams) {
+        const wc = require('electron').webContents.fromId(lastWebContentsId);
+        if (wc) wc.inspectElement(lastContextMenuParams.x, lastContextMenuParams.y);
+    }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {

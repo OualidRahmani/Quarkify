@@ -31,10 +31,107 @@ html {
   transition: background 0.3s ease;
 }
 
+/* --- CUSTOM CONTEXT MENU --- */
+#custom-context-menu {
+  display: none;
+  position: absolute;
+  background: var(--bg-panel);
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.8);
+  z-index: 9999;
+  padding: 5px;
+  min-width: 150px;
+  flex-direction: column;
+}
+
+.context-btn {
+  background: transparent;
+  color: var(--text-main);
+  border: none;
+  padding: 8px 12px;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition: 0.1s;
+}
+
+.context-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+/* --- THE LAYOUT GRID --- */
 #browser-shell {
+  display: grid;
+  height: 100vh;
+  width: 100vw;
+  /* 6x5 Grid: Dock is now on the far left */
+  grid-template-areas:
+    "dock-bar top-bar-1 top-bar-1 top-bar-1 top-bar-1 top-bar-1"
+    "dock-bar top-bar-2 top-bar-2 top-bar-2 top-bar-2 top-bar-2"
+    "dock-bar left-bar-1 left-bar-2 main-content right-bar-1 right-bar-2"
+    "dock-bar bottom-bar-1 bottom-bar-1 bottom-bar-1 bottom-bar-1 bottom-bar-1"
+    "dock-bar bottom-bar-2 bottom-bar-2 bottom-bar-2 bottom-bar-2 bottom-bar-2";
+  grid-template-columns: 50px auto auto 1fr auto auto; 
+  grid-template-rows: auto auto 1fr auto auto;
+  overflow: hidden;
+}
+
+#molecule-dock {
+  grid-area: dock-bar;
+  width: 50px;
+  background: #161616;
+  border-right: 1px solid #2a2a2a; /* Border flipped to the right */
   display: flex;
-  height: 100%;
-  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 15px;
+  gap: 10px;
+  z-index: 100;
+}
+
+#atom-bar, #quark-bar {
+  background: var(--bg-panel);
+  display: flex;
+  transition: all 0.3s ease;
+  overflow: auto;
+}
+
+.bar-vertical {
+  flex-direction: column;
+  width: 180px;
+  padding: 10px;
+  border: 1px solid #333;
+}
+
+.bar-horizontal {
+  flex-direction: row;
+  height: 40px;
+  align-items: center;
+  padding: 0 10px;
+  gap: 10px;
+  border: 1px solid #333;
+}
+
+/* Positioning logic */
+body[data-quark-pos="left"] #quark-bar { grid-area: left-bar; }
+body[data-quark-pos="top"] #quark-bar { grid-area: top-bar; }
+body[data-quark-pos="bottom"] #quark-bar { grid-area: bottom-bar; }
+body[data-quark-pos="right"] #quark-bar { grid-area: right-bar; }
+
+body[data-atom-pos="left"] #atom-bar { grid-area: left-bar; }
+body[data-atom-pos="top"] #atom-bar { grid-area: top-bar; }
+body[data-atom-pos="bottom"] #atom-bar { grid-area: bottom-bar; }
+body[data-atom-pos="right"] #atom-bar { grid-area: right-bar; }
+
+#content {
+  grid-area: main-content;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 /* Navigation Controls */
@@ -70,16 +167,7 @@ html {
   display: flex;
   border-right: 1px solid #333;
 }
-#molecule-dock {
-  width: 50px;
-  background: #161616;
-  border-right: 1px solid #2a2a2a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 15px;
-  gap: 10px;
-}
+
 .molecule {
   width: 28px;
   height: 28px;
@@ -165,11 +253,6 @@ html {
 }
 
 /* Main Content & URL Bar */
-#content {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-}
 #top-bar {
   height: 50px;
   background: var(--bg-dark);
@@ -177,7 +260,8 @@ html {
   align-items: center;
   padding: 0 20px;
   -webkit-app-region: drag;
-} /* Allows dragging the window */
+}
+/* Allows dragging the window */
 #url-input {
   width: 100%;
   max-width: 600px;
@@ -216,45 +300,4 @@ html {
   margin: 0;
   font-size: 0.8rem;
   color: #888;
-}
-
-/* The Toggle Switch */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 50px;
-  height: 26px;
-}
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #444;
-  border-radius: 34px;
-  transition: 0.4s;
-}
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 4px;
-  bottom: 4px;
-  background-color: white;
-  border-radius: 50%;
-  transition: 0.4s;
-}
-input:checked + .slider {
-  background-color: #3a86ff;
-}
-input:checked + .slider:before {
-  transform: translateX(24px);
 }

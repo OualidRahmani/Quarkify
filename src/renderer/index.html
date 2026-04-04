@@ -9,60 +9,32 @@
 
 <body>
     <div id="browser-shell">
+        <aside id="atom-bar" class="bar-vertical">
+            <span class="atom-title">Atoms</span>
+            <div id="atom-container" style="flex: 1;"></div>
+            <button id="new-atom-btn" class="add-btn">+ New Atom</button>
+        </aside>
 
-        <aside id="sidebar">
-            <div id="molecule-dock">
-                <div class="molecule active" data-molecule="work" data-partition="work" title="Work">W</div>
-                <div class="molecule" data-molecule="personal" data-partition="personal" title="Personal">P</div>
-                <div class="molecule-add" id="new-molecule-btn" title="New Molecule">+</div>
-                <div class="molecule" id="settings-btn" title="Settings">S</div>
-            </div>
-
-            <div id="atom-list">
-                <span class="atom-title" id="current-molecule-title">Work molecule</span>
-
-                <div id="quark-container">
-                    <div class="quark active" data-id="quark-1" data-url="https://wikipedia.org" data-molecule="work">
-                        Wikipedia</div>
-                    <div class="quark" data-id="quark-2" data-url="https://github.com" data-molecule="work">GitHub</div>
-                </div>
-
-                <button id="new-quark-btn" class="add-btn">+ New Quark</button>
-            </div>
+        <aside id="quark-bar" class="bar-vertical">
+            <span class="atom-title">Quarks</span>
+            <div id="quark-container" style="flex: 1;"></div>
+            <button id="new-quark-btn" class="add-btn">+ New Quark</button>
         </aside>
 
         <main id="content">
-
-            <div id="password-prompt"
-                style="display: none; position: absolute; top: 60px; right: 20px; background: var(--bg-panel); border: 1px solid #333; padding: 15px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-                <div style="font-size: 14px; margin-bottom: 12px; color: var(--text-main);">
-                    Save password for <strong id="prompt-domain"></strong>?
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="prompt-save-btn"
-                        style="background: var(--accent); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Save</button>
-                    <button id="prompt-close-btn"
-                        style="background: transparent; color: var(--text-muted); border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Not
-                        Now</button>
-                </div>
-            </div>
-
             <div id="new-molecule-modal"
                 style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-panel); border: 1px solid #333; padding: 20px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 300px;">
                 <h3 style="margin-top: 0; font-size: 1rem; margin-bottom: 15px; color: var(--text-main);">Create
                     Workspace</h3>
-
-                <input type="text" id="mol-name-input" placeholder="Name (e.g. Gaming, Research)"
-                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white; margin-bottom: 15px; box-sizing: border-box; outline: none;">
-
+                <input type="text" id="mol-name-input" placeholder="Name (e.g. Gaming)"
+                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white; margin-bottom: 15px; outline: none;">
                 <select id="mol-theme-input"
-                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white; margin-bottom: 15px; box-sizing: border-box; outline: none;">
+                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white; margin-bottom: 15px; outline: none;">
                     <option value="random">Random Color</option>
                     <option value="work">Work (Blue)</option>
                     <option value="personal">Personal (Pink)</option>
                     <option value="gaming">Gaming (Cyan)</option>
                 </select>
-
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button id="mol-cancel-btn"
                         style="background: transparent; color: var(--text-muted); border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Cancel</button>
@@ -71,27 +43,57 @@
                 </div>
             </div>
 
+            <div id="new-atom-modal"
+                style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-panel); border: 1px solid #333; padding: 20px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 300px;">
+                <h3 style="margin-top: 0; font-size: 1rem; margin-bottom: 15px; color: var(--text-main);">Create Group
+                    (Atom)</h3>
+                <input type="text" id="atom-name-input" placeholder="Name (e.g. Research, Social)"
+                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #121212; color: white; margin-bottom: 15px; outline: none;">
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="atom-cancel-btn"
+                        style="background: transparent; color: var(--text-muted); border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button id="atom-create-btn"
+                        style="background: var(--accent); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Create</button>
+                </div>
+            </div>
+
+            <div id="password-prompt"
+                style="display: none; position: absolute; top: 70px; right: 80px; background: #1e1e1e; border: 1px solid #333; padding: 15px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 280px;">
+                <h3 style="margin-top: 0; font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">Save Login?
+                </h3>
+                <p style="font-size: 0.8rem; color: #aaa; margin-top: 0;">Do you want Quarkify to save this password for
+                    <strong id="prompt-domain" style="color: white;"></strong>?</p>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
+                    <button id="prompt-close-btn"
+                        style="background: transparent; color: var(--text-muted); border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Never</button>
+                    <button id="prompt-save-btn"
+                        style="background: #3a86ff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Save</button>
+                </div>
+            </div>
+
             <header id="top-bar">
                 <div id="nav-controls">
-                    <button id="btn-back" class="nav-btn" title="Back">←</button>
-                    <button id="btn-forward" class="nav-btn" title="Forward">→</button>
-                    <button id="btn-refresh" class="nav-btn" title="Refresh">↻</button>
+                    <button id="btn-back" class="nav-btn">←</button>
+                    <button id="btn-forward" class="nav-btn">→</button>
+                    <button id="btn-refresh" class="nav-btn">↻</button>
                 </div>
-                <input type="text" id="url-input" placeholder="Search or enter address..." />
+                <input type="text" id="url-input" placeholder="Search..." />
+                <div id="ram-tracker">RAM: -- MB</div>
             </header>
-
             <div id="webview-container"></div>
         </main>
 
+        <div id="molecule-dock">
+            <div class="molecule-add" id="new-molecule-btn">+</div>
+            <div class="molecule" id="settings-btn">S</div>
+        </div>
+
+        <div id="custom-context-menu">
+            <button class="context-btn" id="menu-inspect">Inspect Element</button>
+        </div>
     </div>
 
     <script src="./ui.js"></script>
-    <!-- <script>
-        ipcRenderer.on('reload-styles', () => {
-            const link = document.getElementById('custom-css');
-            link.href = '../styles/user.css?v=' + Date.now();
-        });
-    </script> -->
 </body>
 
 </html>

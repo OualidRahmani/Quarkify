@@ -24,6 +24,14 @@ const passwordPrompt = document.getElementById('password-prompt');
 const promptDomain = document.getElementById('prompt-domain');
 const promptSaveBtn = document.getElementById('prompt-save-btn');
 const promptCloseBtn = document.getElementById('prompt-close-btn');
+const ramTracker = document.getElementById('ram-tracker');
+const newAtomBtn = document.getElementById('new-atom-btn');
+const atomModal = document.getElementById('new-atom-modal');
+const atomNameInput = document.getElementById('atom-name-input');
+const atomCreateBtn = document.getElementById('atom-create-btn');
+const atomCancelBtn = document.getElementById('atom-cancel-btn');
+const contextMenu = document.getElementById('custom-context-menu');
+const inspectBtn = document.getElementById('menu-inspect');
 
 // =============================================================================
 // 2. CONFIGURATION
@@ -44,11 +52,31 @@ let moleculeCounter = 2;
 let isRestoring = true;
 let lawOfConservation = true;
 let pendingCredential = null;
+let cryoSleepEnabled = false;
+let currentAtomId = null;
+const atomHistory = {}; // moleculeId -> lastActiveAtomId
+const quarkHistory = {}; // atomId -> lastActiveQuarkId
+const moleculeHistory = {};
 
-const moleculeHistory = {
-    'work': 'quark-1',
-    'personal': null,
-};
+function updateLayout(quarkPos = 'left', atomPos = 'left') {
+    document.body.setAttribute('data-quark-pos', quarkPos);
+    document.body.setAttribute('data-atom-pos', atomPos);
+
+    const qBar = document.getElementById('quark-bar');
+    const aBar = document.getElementById('atom-bar');
+
+    qBar.className = (quarkPos === 'top' || quarkPos === 'bottom') ? 'bar-horizontal' : 'bar-vertical';
+    aBar.className = (atomPos === 'top' || atomPos === 'bottom') ? 'bar-horizontal' : 'bar-vertical';
+
+    // Anti-Collision Engine: Put them side-by-side if they share the same wall
+    if (quarkPos === atomPos) {
+        aBar.style.gridArea = `${atomPos}-bar-1`;
+        qBar.style.gridArea = `${quarkPos}-bar-2`;
+    } else {
+        aBar.style.gridArea = `${atomPos}-bar-1`;
+        qBar.style.gridArea = `${quarkPos}-bar-1`;
+    }
+}
 
 // =============================================================================
 // 4. HELPERS
@@ -111,9 +139,7 @@ function createWebview(id, url, isLocal = false) {
     view.addEventListener('dom-ready', () => {
         if (id === SETTINGS_QUARK_ID) {
             view.send('init-settings', { lawOfConservation });
-        } else if (!isLocal) {
-            view.openDevTools();
-        }
+        } 
     });
 
     view.addEventListener('did-navigate', (e) => {
@@ -130,11 +156,12 @@ function createWebview(id, url, isLocal = false) {
     activeWebviews[id] = view;
 }
 
-function createQuark(id, title, molecule) {
+function createQuark(id, title, molecule, atomId) {
     const btn = document.createElement('div');
     btn.className = 'quark';
     btn.setAttribute('data-id', id);
     btn.setAttribute('data-molecule', molecule);
+    btn.setAttribute('data-atom', atomId);
     btn.innerText = title;
 
     btn.addEventListener('click', () => switchQuark(id));
@@ -189,6 +216,74 @@ function closeQuark(id) {
 }
 
 // =============================================================================
+// 5,5. ATOM MANAGEMENT
+// =============================================================================
+
+function createAtom(id, name, moleculeId) {
+    const btn = document.createElement('div');
+    btn.className = 'quark'; 
+    btn.innerText = name;
+    btn.setAttribute('data-id', id);
+    btn.setAttribute('data-molecule', moleculeId);
+
+    btn.addEventListener('click', () => switchAtom(id));
+    // NEW: Middle-click to destroy
+    btn.addEventListener('auxclick', (e) => { if (e.button === 1) destroyAtom(id); });
+    
+    document.getElementById('atom-container').appendChild(btn);
+    preserveState();
+}
+
+function destroyAtom(id) {
+    const atomEl = document.querySelector(`#atom-container .quark[data-id="${id}"]`);
+    if (!atomEl) return;
+
+    const molId = atomEl.getAttribute('data-molecule');
+
+    // 1. Annihilate all Quarks inside this Atom
+    document.querySelectorAll(`.quark[data-atom="${id}"]`).forEach(q => {
+        closeQuark(q.getAttribute('data-id'));
+    });
+
+    // 2. Remove the Atom from the UI
+    atomEl.remove();
+
+    // 3. If we deleted the active Atom, automatically switch to another one
+    if (currentAtomId === id) {
+        const remainingAtoms = document.querySelectorAll(`#atom-container .quark[data-molecule="${molId}"]`);
+        if (remainingAtoms.length > 0) {
+            switchAtom(remainingAtoms[0].getAttribute('data-id'));
+        } else {
+            // If they deleted the last atom in the Workspace, generate a new fallback
+            const fallbackId = `atom-${Date.now()}`;
+            createAtom(fallbackId, 'General', molId);
+            switchAtom(fallbackId);
+        }
+    }
+    preserveState();
+}
+
+function switchAtom(id) {
+    currentAtomId = id;
+    atomHistory[currentMolecule] = id;
+
+    // Highlight active atom
+    document.querySelectorAll('#atom-container .quark').forEach(el => el.classList.remove('active'));
+    document.querySelector(`#atom-container .quark[data-id="${id}"]`)?.classList.add('active');
+
+    // Filter Quarks: Show only quarks belonging to this Atom
+    document.querySelectorAll('#quark-container .quark').forEach(q => {
+        const isSettings = q.getAttribute('data-id') === SETTINGS_QUARK_ID;
+        const belongs = q.getAttribute('data-atom') === id || isSettings;
+        q.style.display = belongs ? 'block' : 'none';
+    });
+
+    // Restore last quark in this atom
+    const lastQuark = quarkHistory[id];
+    if (lastQuark) switchQuark(lastQuark);
+}
+
+// =============================================================================
 // 6. MOLECULE MANAGEMENT
 // =============================================================================
 function createMolecule(id, name, themeType = 'random', partitionID = null) {
@@ -223,7 +318,7 @@ function destroyMolecule(id) {
     const allMolecules = document.querySelectorAll('.molecule');
     if (allMolecules.length <= 1) return;
 
-    document.querySelectorAll(`.quark[data-molecule="${id}"]`).forEach(q => {
+    document.querySelectorAll(`#quark-container .quark[data-molecule="${id}"]`).forEach(q => {
         closeQuark(q.getAttribute('data-id'));
     });
 
@@ -242,46 +337,66 @@ function switchMolecule(targetMolecule) {
     const targetEl = document.querySelector(`.molecule[data-molecule="${targetMolecule}"]`);
     if (!targetMolecule || !targetEl) return;
 
-    currentMolecule = targetMolecule;
-
-    // Update molecule dock highlight
-    document.querySelectorAll('.molecule').forEach(m => m.classList.remove('active'));
-    targetEl.classList.add('active');
-    document.body.setAttribute('data-theme', targetMolecule);
-
-    // Apply accent color
-    const customColor = document.documentElement.style.getPropertyValue(`--theme-${targetMolecule}`);
-    const defaultColors = { work: '#3a86ff', personal: '#ff006e' };
-    document.documentElement.style.setProperty('--accent', customColor || defaultColors[targetMolecule] || '#3a86ff');
-
-    moleculeTitle.innerText = targetMolecule + ' molecule';
-
-    // Show/hide quarks — system quarks are always visible
-    let hasQuarks = false;
-    document.querySelectorAll('.quark').forEach(btn => {
-        const mol = btn.getAttribute('data-molecule');
-        if (mol === SYSTEM_MOLECULE) return;
-        const visible = mol === targetMolecule;
-        btn.style.display = visible ? 'block' : 'none';
-        if (visible) hasQuarks = true;
-    });
-
-    // Switch to the last active quark in this molecule, or the first available
-    const lastId = moleculeHistory[targetMolecule];
-    if (lastId && activeWebviews[lastId]) {
-        switchQuark(lastId);
-    } else if (hasQuarks) {
-        const first = document.querySelector(`.quark[data-molecule="${targetMolecule}"]`);
-        switchQuark(first.getAttribute('data-id'));
-    } else {
-        // No quarks in this molecule — open a fresh one
-        if (currentQuarkId && activeWebviews[currentQuarkId]) {
-            activeWebviews[currentQuarkId].style.display = 'none';
+    if (cryoSleepEnabled != 'undefined' && cryoSleepEnabled) {
+        // Freeze the molecule we are leaving
+        if (currentMolecule && currentMolecule !== targetMolecule) {
+            freezeMolecule(currentMolecule);
         }
-        currentQuarkId = null;
-        urlInput.value = '';
-        newQuarkBtn.click();
+        // Thaw the molecule we are entering
+        if (typeof thawMolecule === 'function') {
+            thawMolecule(targetMolecule);
+        }
     }
+    currentMolecule = targetMolecule;
+    document.querySelectorAll('#atom-container .quark').forEach(btn => {
+        const visible = btn.getAttribute('data-molecule') === targetMolecule;
+        btn.style.display = visible ? 'block' : 'none';
+    });
+    const lastAtomId = atomHistory[targetMolecule];
+    const existingAtomsForMol = document.querySelectorAll(`#atom-container .quark[data-molecule="${targetMolecule}"]`);
+
+    if (lastAtomId && document.querySelector(`#atom-container .quark[data-id="${lastAtomId}"]`)) {
+        // 1. Load the last used atom
+        switchAtom(lastAtomId);
+    } else if (existingAtomsForMol.length > 0) {
+        // 2. If no history but atoms exist, just grab the first one
+        switchAtom(existingAtomsForMol[0].getAttribute('data-id'));
+    } else {
+        // 3. Only generate a new 'General' atom if the workspace is 100% empty
+        const defaultAtomId = `atom-${Date.now()}`;
+        createAtom(defaultAtomId, 'General', targetMolecule);
+        switchAtom(defaultAtomId);
+    }
+}
+
+function freezeMolecule(molId) {
+    if (molId === SYSTEM_MOLECULE) return;
+
+    document.querySelectorAll(`#quark-container .quark[data-molecule="${molId}"]`).forEach(btn => {
+        const id = btn.getAttribute('data-id');
+        const view = activeWebviews[id];
+
+        if (view) {
+            btn.setAttribute('data-url', safeGetURL(view, DEFAULT_HOME_URL));
+            delete activeWebviews[id];
+            try { view.stop(); } catch (e) { }
+            setTimeout(() => { try { view.remove(); } catch (e) { } }, 50);
+            btn.style.opacity = '0.5';
+        }
+    });
+}
+
+function thawMolecule(molId) {
+    if (molId === SYSTEM_MOLECULE) return;
+    document.querySelectorAll(`#quark-container .quark[data-molecule="${molId}"]`).forEach(btn => {
+        const id = btn.getAttribute('data-id');
+        if (!activeWebviews[id]) {
+            // Read the saved URL and resurrect the webview
+            const url = btn.getAttribute('data-url') || DEFAULT_HOME_URL;
+            createWebview(id, url);
+            btn.style.opacity = '1';
+        }
+    });
 }
 
 // =============================================================================
@@ -291,25 +406,36 @@ function preserveState() {
     if (isRestoring) return;
 
     const state = {
-        settings: { lawOfConservation },
+        settings: {
+            lawOfConservation,
+            cryoSleep: cryoSleepEnabled,
+            quarkPos: document.body.getAttribute('data-quark-pos') || 'left',
+            atomPos: document.body.getAttribute('data-atom-pos') || 'left'
+        },
         currentMolecule,
         moleculeHistory,
+        atomHistory,
+        atoms: Array.from(document.querySelectorAll('#atom-container .quark')).map(a => ({
+            id: a.getAttribute('data-id'),
+            name: a.innerText,
+            molecule: a.getAttribute('data-molecule')
+        })),
         molecules: Array.from(document.querySelectorAll('.molecule:not(#settings-btn):not(#new-molecule-btn)')).map(m => ({
             id: m.getAttribute('data-molecule'),
             partitionID: m.getAttribute('data-partition'),
-            name: m.title, // Save the full name from the tooltip!
+            name: m.title,
             color: document.documentElement.style.getPropertyValue(`--theme-${m.getAttribute('data-molecule')}`),
         })),
-        // When Law of Conservation is OFF, save empty quarks so nothing restores on next boot
         quarks: lawOfConservation
-            ? Array.from(document.querySelectorAll(`.quark:not([data-id="${SETTINGS_QUARK_ID}"])`)).map(q => {
+            ? Array.from(document.querySelectorAll(`#quark-container .quark:not([data-id="${SETTINGS_QUARK_ID}"])`)).map(q => {
                 const qId = q.getAttribute('data-id');
                 const view = activeWebviews[qId];
                 return {
                     id: qId,
                     title: q.innerText,
-                    url: view ? safeGetURL(view, DEFAULT_HOME_URL) : DEFAULT_HOME_URL,
+                    url: view ? safeGetURL(view, DEFAULT_HOME_URL) : (q.getAttribute('data-url') || DEFAULT_HOME_URL),
                     molecule: q.getAttribute('data-molecule'),
+                    atom: q.getAttribute('data-atom') 
                 };
             })
             : [],
@@ -317,6 +443,21 @@ function preserveState() {
 
     ipcRenderer.send('save-state', state);
 }
+
+setInterval(async () => {
+    try {
+        const mainRam = await ipcRenderer.invoke('get-memory-usage');
+
+        // Estimate total memory including the active Webviews (Renderer processes)
+        // Each active webview takes roughly ~60MB on average depending on the site
+        const activeTabsCount = Object.keys(activeWebviews).length;
+        const estimatedTotalRam = mainRam + (activeTabsCount * 60);
+
+        ramTracker.innerText = `RAM: ~${estimatedTotalRam} MB`;
+    } catch (e) {
+        console.error("Failed to fetch RAM:", e);
+    }
+}, 2000);
 
 // =============================================================================
 // 8. BOOT — initialize hardcoded quarks from HTML, then wait for saved state
@@ -345,6 +486,9 @@ ipcRenderer.on('load-state', (event, savedState) => {
 
     if (savedState.settings) {
         lawOfConservation = savedState.settings.lawOfConservation;
+        cryoSleepEnabled = savedState.settings.cryoSleep || false;
+        // Apply saved layout
+        updateLayout(savedState.settings.quarkPos || 'left', savedState.settings.atomPos || 'left');
     }
 
     isRestoring = true;
@@ -352,14 +496,28 @@ ipcRenderer.on('load-state', (event, savedState) => {
     // Clear the board
     moleculeDock.querySelectorAll('.molecule:not(#settings-btn):not(#new-molecule-btn)').forEach(m => m.remove());
     quarkContainer.innerHTML = '';
+    document.getElementById('atom-container').innerHTML = ''; // Clear atoms too
     webviewContainer.innerHTML = '';
 
     // Rebuild molecules
     (savedState.molecules || []).forEach(m => {
         if (!m?.id) return;
-        // Pass the saved name (fallback to 'M'), 'saved' for theme, and partition ID
         createMolecule(m.id, m.name || 'M', 'saved', m.partitionID);
         if (m.color) document.documentElement.style.setProperty(`--theme-${m.id}`, m.color);
+    });
+
+    // Rebuild atoms
+    const existingAtoms = savedState.atoms || [];
+    existingAtoms.forEach(a => {
+        if (!a?.id) return;
+        createAtom(a.id, a.name || 'General', a.molecule);
+    });
+
+    // Make sure every active molecule has a default Atom to catch old tabs
+    (savedState.molecules || []).forEach(m => {
+        if (!existingAtoms.some(a => a.molecule === m.id)) {
+            createAtom(`atom-${m.id}-default`, 'General', m.id);
+        }
     });
 
     // Rebuild quarks
@@ -369,7 +527,13 @@ ipcRenderer.on('load-state', (event, savedState) => {
         const isLocal = url.startsWith('file://');
         if (!url.startsWith('http') && !isLocal) url = DEFAULT_HOME_URL;
 
-        createQuark(q.id, q.title || 'New Tab', q.molecule || 'work');
+        // Catch orphans and assign them to the default atom!
+        let assignedAtom = q.atom;
+        if (!assignedAtom) {
+            assignedAtom = atomHistory[q.molecule] || `atom-${q.molecule}-default`;
+        }
+
+        createQuark(q.id, q.title || 'New Tab', q.molecule || 'work', assignedAtom);
         createWebview(q.id, url, isLocal);
 
         if (q.id.includes('-')) {
@@ -380,6 +544,7 @@ ipcRenderer.on('load-state', (event, savedState) => {
 
     // Restore molecule history
     if (savedState.moleculeHistory) Object.assign(moleculeHistory, savedState.moleculeHistory);
+    if (savedState.atomHistory) Object.assign(atomHistory, savedState.atomHistory);
 
     // Switch to the last active molecule
     const targetMol = savedState.currentMolecule || 'work';
@@ -397,6 +562,32 @@ ipcRenderer.on('toggle-conservation', (event, value) => {
 // =============================================================================
 // 10. EVENT LISTENERS
 // =============================================================================
+
+// Receive layout updates from settings
+ipcRenderer.on('update-layout', (event, { quarkPos, atomPos }) => {
+    updateLayout(quarkPos, atomPos);
+    preserveState();
+});
+
+// Receive Cryo-Sleep toggle from main process
+ipcRenderer.on('toggle-cryosleep', (event, value) => {
+    cryoSleepEnabled = value;
+
+    if (cryoSleepEnabled) {
+        // Instantly freeze all inactive molecules
+        document.querySelectorAll('.molecule').forEach(m => {
+            const mId = m.getAttribute('data-molecule');
+            if (mId !== currentMolecule) freezeMolecule(mId);
+        });
+    } else {
+        // Instantly thaw all inactive molecules
+        document.querySelectorAll('.molecule').forEach(m => {
+            const mId = m.getAttribute('data-molecule');
+            if (mId !== currentMolecule) thawMolecule(mId);
+        });
+    }
+    preserveState();
+});
 
 // URL bar
 urlInput.addEventListener('keydown', (e) => {
@@ -421,7 +612,7 @@ btnRefresh.addEventListener('click', () => {
 newQuarkBtn.addEventListener('click', () => {
     quarkCounter++;
     const newId = `quark-${quarkCounter}`;
-    createQuark(newId, 'New Tab', currentMolecule);
+    createQuark(newId, 'New Tab', currentMolecule, currentAtomId);
     createWebview(newId, DEFAULT_HOME_URL);
     switchQuark(newId);
 });
@@ -441,13 +632,13 @@ molCancelBtn.addEventListener('click', () => {
 molCreateBtn.addEventListener('click', () => {
     const name = molNameInput.value.trim() || 'Workspace';
     const theme = molThemeInput.value;
-    
+
     moleculeCounter++;
     const newId = `molecule-${Date.now()}`; // Unique ID using timestamp
-    
+
     createMolecule(newId, name, theme);
     switchMolecule(newId);
-    
+
     molModal.style.display = 'none';
 });
 
@@ -495,4 +686,48 @@ promptCloseBtn.addEventListener('click', () => {
 ipcRenderer.on('reload-styles', () => {
     const link = document.getElementById('custom-css');
     if (link) link.href = '../styles/user.css?v=' + Date.now();
+});
+
+// ATOM MODAL LOGIC
+newAtomBtn.addEventListener('click', () => {
+    atomNameInput.value = '';
+    atomModal.style.display = 'block';
+    atomNameInput.focus();
+});
+
+atomCancelBtn.addEventListener('click', () => {
+    atomModal.style.display = 'none';
+});
+
+atomCreateBtn.addEventListener('click', () => {
+    const name = atomNameInput.value.trim() || 'New Group';
+    const newId = `atom-${Date.now()}`;
+    
+    createAtom(newId, name, currentMolecule);
+    switchAtom(newId);
+    
+    atomModal.style.display = 'none';
+});
+
+atomNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') atomCreateBtn.click();
+});
+
+ipcRenderer.on('show-custom-menu', (event, { x, y }) => {    
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.style.display = 'flex';
+});
+
+// Hide the menu if the user clicks anywhere else on the screen
+window.addEventListener('click', (e) => {
+    if (e.target !== inspectBtn) {
+        contextMenu.style.display = 'none';
+    }
+});
+
+// Trigger the Inspector
+inspectBtn.addEventListener('click', () => {
+    ipcRenderer.send('trigger-inspect');
+    contextMenu.style.display = 'none';
 });
