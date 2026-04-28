@@ -47,7 +47,7 @@ function captureCredentials() {
     if (finalUser && foundPass) {
         const domain = window.location.hostname;
         ipcRenderer.send('propose-save-credential', { domain, username: finalUser, password: foundPass });
-        
+
         // Clear the memory to prevent accidental credential mixing
         sessionStorage.removeItem('quarkify_pending_user');
     }
@@ -57,7 +57,7 @@ function captureCredentials() {
 async function attemptAutofill() {
     const currentDomain = window.location.hostname;
     let credentials;
-    
+
     try {
         credentials = await ipcRenderer.invoke('vault-get-credentials', currentDomain);
     } catch (e) {
@@ -93,7 +93,7 @@ async function attemptAutofill() {
     const observer = new MutationObserver(() => {
         fillVisibleFields();
     });
-    
+
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
@@ -108,8 +108,14 @@ document.addEventListener('submit', captureCredentials);
 document.addEventListener('click', (e) => {
     const target = e.target;
     const isButton = target.tagName === 'BUTTON' || (target.tagName === 'INPUT' && (target.type === 'submit' || target.type === 'button'));
-    
+
     if (isButton) {
         setTimeout(captureCredentials, 50);
+    }
+});
+
+window.addEventListener('mousedown', (e) => {
+    if (e.button !== 2) {
+        ipcRenderer.send('close-context-menu');
     }
 });
