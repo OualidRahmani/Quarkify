@@ -38,29 +38,58 @@ html {
   background: var(--bg-panel);
   border: 1px solid #333;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
   z-index: 9999;
-  padding: 5px;
-  min-width: 150px;
+  padding: 5px 0; /* Padding top/bottom only so hover goes edge-to-edge */
+  min-width: 220px;
   flex-direction: column;
+}
+
+.context-nav-row {
+  display: flex;
+  justify-content: space-around;
+  padding: 4px 10px;
+}
+
+.context-nav-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: 0.1s;
+}
+
+.context-nav-btn:hover {
+  background: #333;
+  color: var(--text-main);
 }
 
 .context-btn {
   background: transparent;
   color: var(--text-main);
   border: none;
-  padding: 8px 12px;
+  padding: 8px 20px;
   text-align: left;
-  border-radius: 4px;
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
   transition: 0.1s;
+  width: 100%;
 }
 
 .context-btn:hover {
   background: var(--accent);
   color: white;
+}
+
+.context-separator {
+  height: 1px;
+  background: #333;
+  margin: 4px 0;
 }
 
 /* --- THE LAYOUT GRID --- */
@@ -75,7 +104,7 @@ html {
     "dock-bar left-bar-1 left-bar-2 main-content right-bar-1 right-bar-2"
     "dock-bar bottom-bar-1 bottom-bar-1 bottom-bar-1 bottom-bar-1 bottom-bar-1"
     "dock-bar bottom-bar-2 bottom-bar-2 bottom-bar-2 bottom-bar-2 bottom-bar-2";
-  grid-template-columns: 50px auto auto 1fr auto auto; 
+  grid-template-columns: 50px auto auto 1fr auto auto;
   grid-template-rows: auto auto 1fr auto auto;
   overflow: hidden;
 }
@@ -93,7 +122,8 @@ html {
   z-index: 100;
 }
 
-#atom-bar, #quark-bar {
+#atom-bar,
+#quark-bar {
   background: var(--bg-panel);
   display: flex;
   transition: all 0.3s ease;
@@ -109,23 +139,162 @@ html {
 
 .bar-horizontal {
   flex-direction: row;
-  height: 40px;
+  height: 45px; /* Slightly taller for comfort */
   align-items: center;
-  padding: 0 10px;
-  gap: 10px;
-  border: 1px solid #333;
+  padding: 0 15px;
+  border: none; /* Removes the ugly box border */
+  background: var(--bg-panel);
+}
+
+/* 1. Make the Headers (Title + Arrow) sit inline */
+.bar-horizontal .bar-header {
+  width: auto;
+  margin-bottom: 0;
+  margin-right: 15px;
+  height: 100%;
+}
+
+.bar-horizontal .atom-title {
+  margin-bottom: 0;
+  margin-right: 10px;
+  display: inline-block;
+}
+
+/* 2. Turn the containers into horizontal scrolling tracks */
+.bar-horizontal #atom-container,
+.bar-horizontal #quark-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+  overflow-x: auto; /* Allow horizontal scrolling */
+  overflow-y: hidden; /* Forbid vertical squishing */
+  gap: 8px; /* Space between tabs */
+}
+
+/* Hide ugly scrollbars for the tab tracks */
+.bar-horizontal #atom-container::-webkit-scrollbar,
+.bar-horizontal #quark-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* 3. Re-style the Tabs (Quarks) to look like standard browser tabs */
+.bar-horizontal .quark {
+  margin-bottom: 0;
+  white-space: nowrap; /* Force text onto one line */
+  overflow: hidden;
+  text-overflow: ellipsis; /* Add "..." if text is too long */
+  max-width: 200px; /* Prevent single tabs from taking up the whole screen */
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
+/* Change the active indicator from a left-line to a bottom-line */
+.bar-horizontal .quark.active {
+  border-left: none;
+  border-bottom: 3px solid var(--accent);
+  border-radius: 6px 6px 0 0; /* Flatten the bottom edge */
+  background: #2a2a2a;
+}
+
+/* 4. Fix the "+ New" button so it doesn't take up 100% width */
+.bar-horizontal .add-btn {
+  width: auto;
+  margin-top: 0;
+  margin-left: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 6px 12px;
+}
+
+/* 5. Fix Horizontal Collapse Logic (Shrink height instead of width) */
+.bar-horizontal.collapsed {
+  height: 28px;
+  width: auto;
+  overflow: hidden;
+}
+
+.bar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: 0.3s ease;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.collapse-btn:hover {
+  color: var(--text-main);
+}
+
+/* When the bar is closed */
+.bar-vertical.collapsed {
+  width: 35px; /* Shrinks to a tiny strip */
+  padding: 10px 5px;
+}
+
+.bar-horizontal.collapsed {
+  width: 45px; /* Shrinks to a tiny square on the edge */
+  overflow: hidden;
+}
+
+/* Hide everything except the header when collapsed */
+.collapsed #atom-container,
+.collapsed #quark-container,
+.collapsed .add-btn,
+.collapsed .atom-title {
+  display: none !important;
+}
+
+/* Center the button and flip the arrow when collapsed */
+.collapsed .bar-header {
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.collapsed .collapse-btn {
+  transform: rotate(180deg);
 }
 
 /* Positioning logic */
-body[data-quark-pos="left"] #quark-bar { grid-area: left-bar; }
-body[data-quark-pos="top"] #quark-bar { grid-area: top-bar; }
-body[data-quark-pos="bottom"] #quark-bar { grid-area: bottom-bar; }
-body[data-quark-pos="right"] #quark-bar { grid-area: right-bar; }
+body[data-quark-pos="left"] #quark-bar {
+  grid-area: left-bar;
+}
+body[data-quark-pos="top"] #quark-bar {
+  grid-area: top-bar;
+}
+body[data-quark-pos="bottom"] #quark-bar {
+  grid-area: bottom-bar;
+}
+body[data-quark-pos="right"] #quark-bar {
+  grid-area: right-bar;
+}
 
-body[data-atom-pos="left"] #atom-bar { grid-area: left-bar; }
-body[data-atom-pos="top"] #atom-bar { grid-area: top-bar; }
-body[data-atom-pos="bottom"] #atom-bar { grid-area: bottom-bar; }
-body[data-atom-pos="right"] #atom-bar { grid-area: right-bar; }
+body[data-atom-pos="left"] #atom-bar {
+  grid-area: left-bar;
+}
+body[data-atom-pos="top"] #atom-bar {
+  grid-area: top-bar;
+}
+body[data-atom-pos="bottom"] #atom-bar {
+  grid-area: bottom-bar;
+}
+body[data-atom-pos="right"] #atom-bar {
+  grid-area: right-bar;
+}
 
 #content {
   grid-area: main-content;
@@ -300,4 +469,103 @@ body[data-atom-pos="right"] #atom-bar { grid-area: right-bar; }
   margin: 0;
   font-size: 0.8rem;
   color: #888;
+}
+
+/* --- CLOSE BUTTONS & TITLE TRUNCATION --- */
+.quark {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.q-title,
+.a-title {
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.close-btn {
+  background: transparent;
+  color: #888;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  margin-left: 5px;
+  opacity: 0;
+  transition: 0.1s;
+}
+
+.quark:hover .close-btn,
+.molecule:hover .close-btn {
+  opacity: 1;
+}
+
+.close-btn:hover {
+  background: #ff4444;
+  color: white;
+}
+
+.molecule {
+  position: relative;
+}
+.molecule .close-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  border-radius: 50%;
+  background: #111;
+  border: 1px solid #333;
+}
+
+/* --- TAB SWITCHER MODAL --- */
+.switcher-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.1s;
+}
+
+.switcher-item:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.switcher-title {
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 15px;
+}
+
+.switcher-badge {
+  font-size: 0.7rem;
+  background: #111;
+  padding: 3px 8px;
+  border-radius: 12px;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+/* Custom Scrollbar for the list */
+#tab-switcher-list::-webkit-scrollbar {
+  width: 6px;
+}
+#tab-switcher-list::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
 }

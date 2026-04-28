@@ -10,14 +10,20 @@
 <body>
     <div id="browser-shell">
         <aside id="atom-bar" class="bar-vertical">
-            <span class="atom-title">Atoms</span>
-            <div id="atom-container" style="flex: 1;"></div>
+            <div class="bar-header">
+                <span class="atom-title">Atoms</span>
+                <button class="collapse-btn" id="atom-collapse-btn" title="Toggle Atom Bar">◀</button>
+            </div>
+            <div id="atom-container" style="flex: 1; width: 100%;"></div>
             <button id="new-atom-btn" class="add-btn">+ New Atom</button>
         </aside>
 
         <aside id="quark-bar" class="bar-vertical">
-            <span class="atom-title">Quarks</span>
-            <div id="quark-container" style="flex: 1;"></div>
+            <div class="bar-header">
+                <span class="atom-title">Quarks</span>
+                <button class="collapse-btn" id="quark-collapse-btn" title="Toggle Quark Bar">◀</button>
+            </div>
+            <div id="quark-container" style="flex: 1; width: 100%;"></div>
             <button id="new-quark-btn" class="add-btn">+ New Quark</button>
         </aside>
 
@@ -62,7 +68,8 @@
                 <h3 style="margin-top: 0; font-size: 0.9rem; margin-bottom: 10px; color: var(--text-main);">Save Login?
                 </h3>
                 <p style="font-size: 0.8rem; color: #aaa; margin-top: 0;">Do you want Quarkify to save this password for
-                    <strong id="prompt-domain" style="color: white;"></strong>?</p>
+                    <strong id="prompt-domain" style="color: white;"></strong>?
+                </p>
                 <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
                     <button id="prompt-close-btn"
                         style="background: transparent; color: var(--text-muted); border: 1px solid #555; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Never</button>
@@ -88,7 +95,33 @@
             <div class="molecule" id="settings-btn">S</div>
         </div>
 
+        <div id="tab-switcher-modal"
+            style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-panel); border: 1px solid #333; padding: 20px; border-radius: 8px; z-index: 2000; box-shadow: 0 10px 30px rgba(0,0,0,0.8); width: 500px; max-height: 60vh; flex-direction: column;">
+            <h3
+                style="margin-top: 0; font-size: 1rem; margin-bottom: 15px; color: var(--text-main); border-bottom: 1px solid #333; padding-bottom: 10px;">
+                Open Quarks</h3>
+            <div id="tab-switcher-list"
+                style="overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding-right: 5px;"></div>
+        </div>
+
         <div id="custom-context-menu">
+            <div class="context-nav-row">
+                <button class="context-nav-btn" id="menu-back" title="Back">←</button>
+                <button class="context-nav-btn" id="menu-forward" title="Forward">→</button>
+                <button class="context-nav-btn" id="menu-reload" title="Reload">↻</button>
+            </div>
+            <div class="context-separator"></div>
+
+            <button class="context-btn" id="menu-open-link" style="display: none;">Open Link in New Tab</button>
+            <div class="context-separator" id="menu-link-separator" style="display: none;"></div>
+
+            <button class="context-btn" id="menu-copy">Copy</button>
+            <button class="context-btn" id="menu-paste">Paste</button>
+            <button class="context-btn" id="menu-select-all">Select All</button>
+
+            <div class="context-separator"></div>
+
+            <button class="context-btn" id="menu-undo-close">Reopen Closed Tab</button>
             <button class="context-btn" id="menu-inspect">Inspect Element</button>
         </div>
     </div>

@@ -111,15 +111,44 @@
         </label>
     </div>
 
+    <div class="setting-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div class="setting-info">
+                <h3>Cryo-Sleep (RAM Saver)</h3>
+                <p>Freeze inactive Workspaces to save memory.</p>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="cryo-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div id="deep-cryo-container"
+            style="display: none; justify-content: space-between; align-items: center; padding-left: 20px; border-left: 2px solid #333; margin-top: 5px;">
+            <div class="setting-info">
+                <h3 style="font-size: 0.9rem;">Deep Freeze (Atom Level)</h3>
+                <p style="font-size: 0.75rem;">Also freeze inactive Atoms within the same Workspace.</p>
+            </div>
+            <label class="switch" style="transform: scale(0.85);">
+                <input type="checkbox" id="deep-cryo-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
     <div class="setting-row">
         <div class="setting-info">
-            <h3>Cryo-Sleep (RAM Saver)</h3>
-            <p>Freeze Quarks in inactive Workspaces to save memory. They will reload when you switch back.</p>
+            <h3>Absolute Zero (Tab Limit)</h3>
+            <p>Limit simultaneous active tabs. Oldest inactive tabs are frozen (playing media is spared).</p>
         </div>
-        <label class="switch">
-            <input type="checkbox" id="cryo-toggle">
-            <span class="slider"></span>
-        </label>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <input type="number" id="az-limit" min="1" max="50"
+                style="width: 50px; background: #121212; color: white; border: 1px solid #333; padding: 4px; border-radius: 4px; outline: none;">
+            <label class="switch">
+                <input type="checkbox" id="az-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
     </div>
 
     <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 15px; ">
@@ -175,25 +204,45 @@
         const { ipcRenderer } = require('electron');
         const toggle = document.getElementById('conservation-toggle');
         const cryoToggle = document.getElementById('cryo-toggle');
+        const deepCryoContainer = document.getElementById('deep-cryo-container');
+        const deepCryoToggle = document.getElementById('deep-cryo-toggle');
+        const azToggle = document.getElementById('az-toggle');
+        const azLimit = document.getElementById('az-limit');
 
         // Request current settings from main process on load
         ipcRenderer.send('request-settings');
 
         ipcRenderer.on('init-settings', (event, state) => {
             toggle.checked = state.lawOfConservation;
-            if (state.cryoSleep !== undefined) cryoToggle.checked = state.cryoSleep;
-            
+            if (state.cryoSleep !== undefined) {
+                cryoToggle.checked = state.cryoSleep;
+                deepCryoContainer.style.display = state.cryoSleep ? 'flex' : 'none';
+            }
+            if (state.deepCryoSleep !== undefined) deepCryoToggle.checked = state.deepCryoSleep;
+
+            if (state.absoluteZero !== undefined) azToggle.checked = state.absoluteZero;
+            if (state.absoluteZeroLimit !== undefined) azLimit.value = state.absoluteZeroLimit;
+
             // Sync the dropdowns with the actual engine state!
             if (state.quarkPos) document.getElementById('quark-pos-select').value = state.quarkPos;
             if (state.atomPos) document.getElementById('atom-pos-select').value = state.atomPos;
         });
+
+        azToggle.addEventListener('change', (e) => ipcRenderer.send('toggle-absolutezero', e.target.checked));
+        azLimit.addEventListener('change', (e) => ipcRenderer.send('update-absolutezero-limit', parseInt(e.target.value, 10)));
 
         toggle.addEventListener('change', (e) => {
             ipcRenderer.send('toggle-conservation', e.target.checked);
         });
 
         cryoToggle.addEventListener('change', (e) => {
-            ipcRenderer.send('toggle-cryosleep', e.target.checked);
+            const isChecked = e.target.checked;
+            ipcRenderer.send('toggle-cryosleep', isChecked);
+            deepCryoContainer.style.display = isChecked ? 'flex' : 'none';
+        });
+
+        deepCryoToggle.addEventListener('change', (e) => {
+            ipcRenderer.send('toggle-deepcryosleep', e.target.checked);
         });
 
         const addBtn = document.getElementById('add-vault-btn');
@@ -203,7 +252,7 @@
         let vaultExpanded = false; // Tracks if the extra credentials are shown
 
         async function refreshVault() {
-            const items = await ipcRenderer.invoke('vault-get-all');
+            const items = await ipcRenderer.invoke('vault-get-credentials');
 
             const generateHTML = (item) => `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;">
@@ -226,7 +275,7 @@
             } else {
                 const visibleHTML = items.slice(0, 2).map(generateHTML).join('');
                 const hiddenHTML = items.slice(2).map(generateHTML).join('');
-                
+
                 vaultList.innerHTML = `
                     ${visibleHTML}
                     <div id="vault-hidden-container" style="display: ${vaultExpanded ? 'block' : 'none'};">
@@ -243,7 +292,7 @@
                     vaultExpanded = !vaultExpanded;
                     refreshVault();
                 });
-                
+
                 // Add a nice hover effect to the new button
                 expandBtn.addEventListener('mouseover', () => expandBtn.style.color = '#fff');
                 expandBtn.addEventListener('mouseout', () => expandBtn.style.color = '#888');
